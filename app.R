@@ -16,6 +16,13 @@
 #  library(pkg, character.only = TRUE, quietly = T)
 #}
 
+suppressPackageStartupMessages({
+  library(shiny)
+  library(DT)          # keep attached for htmlwidgets bindings
+  library(gh)
+  library(readr)
+  library(base64enc)
+})
 
 #if (file.exists("secrets.R")) source("secrets.R")   # sets env vars
 source("get_who_data.R")                            # defines get_who_port_list(), etc.
@@ -28,7 +35,7 @@ ui <- fluidPage(
       helpText("Data is fetched live from WHO and parsed locally (Java-free).")
     ),
     mainPanel(
-      DTOutput("tbl")
+      DT::DTOutput("tbl")
     )
   )
 )

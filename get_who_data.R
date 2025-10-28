@@ -14,11 +14,8 @@
 # ==============================================================
 
 suppressPackageStartupMessages({
-  library(pdftools)
-  library(dplyr)
-  library(stringr)
-  library(purrr)
-  library(tidyr)
+  library(shiny)
+  library(DT)          # keep attached for htmlwidgets bindings
   library(gh)
   library(readr)
   library(base64enc)
