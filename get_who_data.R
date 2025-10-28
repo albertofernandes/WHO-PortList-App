@@ -14,8 +14,11 @@
 # ==============================================================
 
 suppressPackageStartupMessages({
-  library(shiny)
-  library(DT)          # keep attached for htmlwidgets bindings
+  library(pdftools)
+  library(dplyr)
+  library(stringr)
+  library(purrr)
+  library(tidyr)
   library(gh)
   library(readr)
   library(base64enc)

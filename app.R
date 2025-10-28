@@ -22,6 +22,11 @@ suppressPackageStartupMessages({
   library(gh)
   library(readr)
   library(base64enc)
+  library(pdftools)
+  library(dplyr)
+  library(stringr)
+  library(purrr)
+  library(tidyr)
 })
 
 #if (file.exists("secrets.R")) source("secrets.R")   # sets env vars
