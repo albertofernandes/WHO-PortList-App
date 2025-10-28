@@ -6,7 +6,7 @@ suppressPackageStartupMessages({
 })
 
 # Reuse your parsing + GitHub helpers
-source("get_who_data.R")  # defines get_who_port_list(), update_history_github(), gh_write_csv()
+source("../get_who_data.R")  # defines get_who_port_list(), update_history_github(), gh_write_csv()
 
 # --- Fetch the current snapshot ---
 snap <- get_who_port_list()
