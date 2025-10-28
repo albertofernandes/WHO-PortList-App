@@ -98,13 +98,13 @@ server <- function(input, output, session) {
     mark_to_value <- function(m) {
       m <- normalize_mark(m)
       dplyr::case_when(
-        # YES variants
-        stringr::str_detect(m, "☑|✓|✔") ~ 1L,
-        stringr::str_detect(m, stringr::regex("\\[\\s*[xX]\\s*\\]", perl = TRUE)) ~ 1L,
+        # YES variants first
+        stringr::str_detect(m, "[\u2611\u2713\u2714]") ~ 1L,                # ☑ ✓ ✔
+        stringr::str_detect(m, "\\[\\s*[xX]\\s*\\]")   ~ 1L,                # [x], [ x ], [X]
         # NO variants
-        stringr::str_detect(m, "☐") ~ 0L,
-        stringr::str_detect(m, stringr::regex("\\[\\s*\\]", perl = TRUE)) ~ 0L,
-        TRUE ~ NA_integer_
+        stringr::str_detect(m, "[\u2610]")             ~ 0L,                # ☐
+        stringr::str_detect(m, "\\[\\s*\\]")           ~ 0L,                # [ ], [] (with/without spaces)
+        TRUE                                           ~ NA_integer_
       )
     }
     
