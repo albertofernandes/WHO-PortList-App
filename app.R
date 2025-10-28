@@ -88,6 +88,26 @@ server <- function(input, output, session) {
     port <- selected_port_name()
     req(!is.null(port))
     
+    normalize_mark <- function(x) {
+      x <- ifelse(is.na(x), NA_character_, x)
+      x <- gsub("\u00A0", " ", x, fixed = TRUE)     # non-breaking space -> regular space
+      x <- stringr::str_squish(x)                   # trim + collapse multispace
+      x
+    }
+    
+    mark_to_value <- function(m) {
+      m <- normalize_mark(m)
+      dplyr::case_when(
+        # YES variants
+        stringr::str_detect(m, "☑|✓|✔") ~ 1L,
+        stringr::str_detect(m, stringr::regex("\\[\\s*[xX]\\s*\\]", perl = TRUE)) ~ 1L,
+        # NO variants
+        stringr::str_detect(m, "☐") ~ 0L,
+        stringr::str_detect(m, stringr::regex("\\[\\s*\\]", perl = TRUE)) ~ 0L,
+        TRUE ~ NA_integer_
+      )
+    }
+    
     df_full <- history_rv() %>%
       dplyr::filter(Name == port) %>%
       dplyr::mutate(Date = as.Date(Date, format = "%d/%m/%Y")) %>%
@@ -98,15 +118,11 @@ server <- function(input, output, session) {
         values_to = "Mark"
       ) %>%
       dplyr::mutate(
-        Value = dplyr::case_when(
-          grepl("\\[x\\]", Mark, ignore.case = TRUE) ~ 1L,
-          grepl("\\[\\]",  Mark)                     ~ 0L,
-          TRUE                                       ~ NA_integer_
-        ),
+        Value = mark_to_value(Mark),
         Criterion = factor(Criterion, levels = c("SSCC","SSCEC","Extension"))
       )
     
-    # Expand to daily grid so x-axis has all days; keep gaps (NAs) where we had no snapshot
+    # daily grid so x-axis has all days
     rng <- range(df_full$Date, na.rm = TRUE)
     all_days <- seq(from = rng[1], to = rng[2], by = "day")
     
@@ -116,7 +132,7 @@ server <- function(input, output, session) {
         Criterion,
         fill = list(Value = NA_integer_, Mark = NA_character_, Name = port)
       ) %>%
-      dplyr::mutate(Name = port)   # ensure column present after complete()
+      dplyr::mutate(Name = port)
   })
   
   output$status_plot <- renderPlot({
@@ -128,7 +144,7 @@ server <- function(input, output, session) {
       ggplot2::geom_point(na.rm = TRUE) +
       ggplot2::scale_y_continuous(
         breaks = c(0, 1),
-        labels = c("No []", "Yes [x]"),
+        labels = c("No [ ]", "Yes [x]"),
         limits = c(0, 1)
       ) +
       ggplot2::labs(
