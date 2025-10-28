@@ -1,0 +1,47 @@
+name: WHO Ports snapshots
+
+on:
+  schedule:
+    - cron: '30 8,15,22 * * *'   # 08:30, 15:00, 22:00 Lisbon time
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  run-snapshot:
+    runs-on: ubuntu-latest
+    env:
+      GH_REPO: ${{ github.repository }}
+      GH_BRANCH: main
+      GH_PATH: who_history.csv
+      GH_SNAPSHOT_DIR: snapshots
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: System deps for pdftools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpoppler-cpp-dev libpoppler-dev libfontconfig1-dev
+
+      - name: Install R deps
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            any::gh
+            any::readr
+            any::base64enc
+            any::pdftools
+            any::dplyr
+            any::stringr
+            any::purrr
+            any::tidyr
+          needs: check
+
+      - name: Run snapshot job
+        run: Rscript cron/job_fetch_who.R
