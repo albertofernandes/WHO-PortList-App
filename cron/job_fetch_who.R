@@ -6,7 +6,18 @@ suppressPackageStartupMessages({
 })
 
 # Reuse your parsing + GitHub helpers
-source("get_who_data.R")  # defines get_who_port_list(), update_history_github(), gh_write_csv()
+# Resolve the directory of THIS script at runtime (works in GitHub Actions, Rscript, RStudio)
+args <- commandArgs(trailingOnly = FALSE)
+file_arg <- sub("^--file=", "", args[grep("^--file=", args)])
+script_path <- if (length(file_arg)) normalizePath(file_arg) else normalizePath(sys.frames()[[1]]$ofile %||% "cron/job_fetch_who.R")
+script_dir  <- dirname(script_path)
+
+# If your script sits in cron/, repo root is one level up
+repo_root <- normalizePath(file.path(script_dir, ".."))
+
+target <- file.path(repo_root, "get_who_data.R")
+if (!file.exists(target)) stop("get_who_data.R not found at: ", target)
+source(target)
 
 # --- Fetch the current snapshot ---
 snap <- get_who_port_list()
