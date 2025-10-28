@@ -191,14 +191,30 @@ gh_write_csv <- function(data,
 }
 
 .who_content_cols <- c("Name","Code","SSCC","SSCEC","Extension","Other information")
+
 append_who_history <- function(existing = NULL, new_snapshot) {
-  stopifnot(all(c(.who_content_cols, "Date") %in% names(new_snapshot)))
-  if (is.null(existing)) {
-    existing <- tibble::tibble()[, c(.who_content_cols, "Date"), drop = FALSE]
+  cols <- c(.who_content_cols, "Date")
+  
+  # 1) If no existing file (first run) or wrong shape, create a 0-row tibble with the expected columns
+  if (is.null(existing) || !all(cols %in% names(existing))) {
+    empty_cols <- setNames(rep(list(character()), length(cols)), cols)
+    existing <- tibble::as_tibble(empty_cols)
+  } else {
+    # keep only expected columns (in case the file has extras)
+    existing <- dplyr::select(existing, dplyr::all_of(cols))
   }
-  dplyr::bind_rows(existing, new_snapshot) %>%
-    dplyr::distinct(dplyr::across(all_of(c(.who_content_cols, "Date"))), .keep_all = TRUE) %>%
-    dplyr::select(dplyr::all_of(c(.who_content_cols, "Date")))
+  
+  # 2) Ensure the new snapshot has exactly the expected columns (add missing as NA, drop extras)
+  missing_in_new <- setdiff(cols, names(new_snapshot))
+  if (length(missing_in_new)) {
+    for (m in missing_in_new) new_snapshot[[m]] <- NA_character_
+  }
+  new_snapshot <- dplyr::select(new_snapshot, dplyr::all_of(cols))
+  
+  # 3) Bind + dedupe on all content columns + Date
+  dplyr::bind_rows(existing, new_snapshot) |>
+    dplyr::distinct(dplyr::across(dplyr::all_of(cols)), .keep_all = TRUE) |>
+    dplyr::select(dplyr::all_of(cols))
 }
 
 # Public: read existing history, append new snapshot, dedupe (per Date), and write back

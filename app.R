@@ -68,38 +68,37 @@ server <- function(input, output, session) {
     history_rv(hist2)
   })
   
-  selected_port_names <- reactive({
+  selected_port_name <- reactive({
     df_all <- history_rv()
     req(nrow(df_all) > 0)
     
-    # Rows currently visible (after client-side filtering/search)
     vis_idx <- input$tbl_rows_all
-    if (is.null(vis_idx)) return(character(0))
+    if (is.null(vis_idx) || length(vis_idx) == 0) return(NULL)
+    
     df_vis <- df_all[vis_idx, , drop = FALSE]
     
-    # Row numbers selected in that visible table
     sel_vis_idx <- input$tbl_rows_selected
-    if (is.null(sel_vis_idx) || length(sel_vis_idx) == 0) return(character(0))
+    if (is.null(sel_vis_idx) || length(sel_vis_idx) != 1) return(NULL)
     
-    unique(df_vis$Name[sel_vis_idx])
+    df_vis$Name[sel_vis_idx]
   })
   
   # Make a tidy time series for the three status columns
   series_for_plot <- reactive({
-    ports <- selected_port_names()
-    req(length(ports) > 0)
+    port <- selected_port_name()
+    req(!is.null(port))
     
-    df <- history_rv() %>%
-      filter(Name %in% ports) %>%
-      mutate(Date = as.Date(Date, format = "%d/%m/%Y")) %>%
-      arrange(Name, Date) %>%
-      pivot_longer(
+    df_full <- history_rv() %>%
+      dplyr::filter(Name == port) %>%
+      dplyr::mutate(Date = as.Date(Date, format = "%d/%m/%Y")) %>%
+      dplyr::arrange(Date) %>%
+      tidyr::pivot_longer(
         c(SSCC, SSCEC, Extension),
         names_to = "Criterion",
         values_to = "Mark"
       ) %>%
-      mutate(
-        Value = case_when(
+      dplyr::mutate(
+        Value = dplyr::case_when(
           grepl("\\[x\\]", Mark, ignore.case = TRUE) ~ 1L,
           grepl("\\[\\]",  Mark)                     ~ 0L,
           TRUE                                       ~ NA_integer_
@@ -107,37 +106,48 @@ server <- function(input, output, session) {
         Criterion = factor(Criterion, levels = c("SSCC","SSCEC","Extension"))
       )
     
-    df
+    # Expand to daily grid so x-axis has all days; keep gaps (NAs) where we had no snapshot
+    rng <- range(df_full$Date, na.rm = TRUE)
+    all_days <- seq(from = rng[1], to = rng[2], by = "day")
+    
+    df_full %>%
+      tidyr::complete(
+        Date = all_days,
+        Criterion,
+        fill = list(Value = NA_integer_, Mark = NA_character_, Name = port)
+      ) %>%
+      dplyr::mutate(Name = port)   # ensure column present after complete()
   })
   
   output$status_plot <- renderPlot({
     df <- series_for_plot()
     req(nrow(df) > 0)
     
-    # If multiple ports are selected, color by port and facet by Criterion.
-    gg <- ggplot(df, aes(x = Date, y = Value, group = Name, color = Name)) +
-      geom_line(na.rm = TRUE) +
-      geom_point(na.rm = TRUE) +
-      scale_y_continuous(
+    ggplot2::ggplot(df, ggplot2::aes(x = Date, y = Value, color = Criterion, group = Criterion)) +
+      ggplot2::geom_line(na.rm = TRUE) +
+      ggplot2::geom_point(na.rm = TRUE) +
+      ggplot2::scale_y_continuous(
         breaks = c(0, 1),
         labels = c("No []", "Yes [x]"),
         limits = c(0, 1)
       ) +
-      facet_wrap(~ Criterion, nrow = 1) +
-      labs(
+      ggplot2::labs(
         x = NULL, y = NULL,
-        title = "Port status over time",
-        subtitle = "Select ports in the table to visualize SSCC / SSCEC / Extension"
+        title = paste0("Status over time — ", unique(df$Name)),
+        subtitle = "Three lines: SSCC, SSCEC, Extension"
       ) +
-      theme_minimal(base_size = 12) +
-      theme(legend.position = "bottom")
-    
-    gg
+      ggplot2::theme_minimal(base_size = 12) +
+      ggplot2::theme(legend.position = "bottom")
   })
+  
   output$tbl <- renderDT({
     df <- history_rv()                           # <- get the value
     req(is.data.frame(df), ncol(df) > 0)         # guard
-    DT::datatable(df, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE, selection = "multiple")
+    DT::datatable(
+      df, 
+      options = list(pageLength = 25, scrollX = TRUE), 
+      rownames = FALSE, 
+      selection = "single")
   })
 }
   
