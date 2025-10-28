@@ -1,23 +1,23 @@
 # app.R (minimal example)
-required_packages <- c(
-  "shiny",
-  "DT",
-  "here",
-  "rsconnect",
-  "gh",
-  "readr",
-  "base64enc"
-)
+#required_packages <- c(
+#  "shiny",
+#  "DT",
+#  "here",
+#  "rsconnect",
+#  "gh",
+#  "readr",
+#  "base64enc"
+#)
 
-for (pkg in required_packages) {
-  if (!pkg %in% rownames(installed.packages())) {
-    install.packages(pkg, repos = "http://cran.us.r-project.org")
-  }
-  library(pkg, character.only = TRUE, quietly = T)
-}
+#for (pkg in required_packages) {
+#  if (!pkg %in% rownames(installed.packages())) {
+#    install.packages(pkg, repos = "http://cran.us.r-project.org")
+#  }
+#  library(pkg, character.only = TRUE, quietly = T)
+#}
 
 
-if (file.exists("secrets.R")) source("secrets.R")   # sets env vars
+#if (file.exists("secrets.R")) source("secrets.R")   # sets env vars
 source("get_who_data.R")                            # defines get_who_port_list(), etc.
 
 ui <- fluidPage(
@@ -35,8 +35,9 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   history_rv <- reactiveVal(tibble::tibble())
-  #data_r <- reactiveVal(tibble::tibble())
   
+  do_initial <- isTRUE(tolower(Sys.getenv("AUTO_REFRESH_ON_START", "true")) == "true")
+
   # Initial fetch + persist to GitHub
   observeEvent(TRUE, {
     snap  <- get_who_port_list()
