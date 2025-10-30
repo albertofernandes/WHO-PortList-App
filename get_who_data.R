@@ -93,6 +93,9 @@ get_who_port_list <- function(
       Code                = if_else(shift_flag, NA_character_, Code)
     ) %>%
     select(-shift_flag) %>%
+    filter(!is.na(SSCC)) %>% 
+    filter(!is.na(SSCEC)) %>% 
+    filter(!is.na(Extension)) %>% 
     # Add timestamp column
     mutate(Date = format(Sys.Date(), today_fmt)) %>%
     # Squish whitespace for readability, keep NAs
