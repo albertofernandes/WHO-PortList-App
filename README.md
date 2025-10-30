@@ -1,148 +1,139 @@
-# 🧭 WHO Designated Ports – Shiny App
+# WHO Port List — Automated Data Tracker  
+[![Last Update](https://img.shields.io/github/last-commit/albertofernandes/WHO-PortList-App?label=Last%20Update&color=blue)](https://github.com/albertofernandes/WHO-PortList-App/commits/main)
+[![GitHub Actions](https://github.com/albertofernandes/WHO-PortList-App/actions/workflows/who_ports.yml/badge.svg)](https://github.com/albertofernandes/WHO-PortList-App/actions)
 
-This Shiny app automatically downloads and parses the **World Health Organization (WHO) Designated Ports List** PDF, converting it into a structured dataset.  
-Each time the app runs, it appends new data with a timestamp, allowing the creation of a **historical evolution** of WHO-designated ports.
-
-Built by: **USP – Public Health Unit**, Local Health Unit of Matosinhos  
-Author: **Alberto Fernandes** (albertojose.fernandes@ulsm.min-saude.pt)  
-Version: **v1.0** (28/10/2025)
-
----
-
-## ✨ Features
-- Fetches and parses the WHO PDF directly
-- Cleans and structures the data into 6 core columns:
-  - Name, Code, SSCC, SSCEC, Extension, Other information
-- Adds a timestamp (`dd/mm/yyyy`) for historical tracking
-- Optionally persists data to a GitHub CSV file (for free, no database needed)
-- Can be hosted free on **[shinyapps.io](https://www.shinyapps.io/)**
+### USP · Public Health Unit, Local Health Unit of Matosinhos  
+**Contact:** albertojose.fernandes@ulsm.min-saude.pt  
+**Version:** v1.0 · **Date:** 28/10/2025  
 
 ---
 
-## 📁 Project structure
+**Overview**
+
+This project parses the **World Health Organization (WHO) International Health Regulations (IHR) Ports List** PDF into a structured dataset and tracks its evolution over time.
+
+The **Shiny application** allows interactive exploration of the dataset, while a **GitHub Actions cron job** automatically fetches and updates the data three times per day — ensuring that your published data stays up to date without manual intervention.
+
+No Java is required — all parsing is done in pure R using the `pdftools` package.
+
+---
+
+**Key Features**
+
+- 🔎 **Live parsing** of WHO’s official *IHR Ports List* PDF  
+- 🗃️ **Clean tabular output** — columns:  
+  `Name`, `Code`, `SSCC`, `SSCEC`, `Extension`, `Other information`, `Date`
+- 🕐 **Automated updates** 3× per day via GitHub Actions  
+- 📈 **Interactive dashboard** in Shiny  
+- 💾 **Versioned history** — each run stores a timestamped snapshot and maintains a rolling `who_history.csv`
+
+---
+
+**Repository Structure**
 
 WHO-PortList-App/
-├── app.R # Main Shiny app
-├── get_who_data.R # WHO PDF parsing + persistence helpers
-├── DESCRIPTION # Package dependencies
-├── secrets.R # Environment variables (GITHUB_PAT etc.) – DO NOT COMMIT
-├── .gitignore # Excludes secrets and local junk
-└── README.md # This file
+├── app.R # Shiny application (interactive dashboard)
+├── get_who_data.R # Core functions: fetch, parse, and GitHub I/O
+├── cron/
+│ └── job_fetch_who.R # Script executed by GitHub Actions on schedule
+└── .github/
+└── workflows/
+└── who_ports.yml # Cron job workflow configuration
 
 ---
 
-## 🧩 Requirements
+**Shiny Application**
 
-You need R ≥ 4.2 and the following packages:
+The **Shiny app** provides an interface for viewing and filtering port data.
 
-```r
-install.packages(c(
-  "shiny", "DT", "pdftools", "dplyr", "stringr",
-  "tidyr", "purrr", "gh", "readr", "base64enc"
-))
-The DESCRIPTION file already lists these dependencies for deployment on shinyapps.io.
+**How it works:**
+1. Filter the table to find a specific port.
+2. Select one row (one port).
+3. The chart displays **three colored lines** over time representing:
+   - **SSCC**
+   - **SSCEC**
+   - **Extension**
 
-⚙️ Running locally
-Clone the repository:
+Each line indicates if the port met the criterion on that date:
+- `[x]` → Yes (1)  
+- `[ ]` → No (0)
 
-bash
-Copiar código
-git clone https://github.com/<your-username>/WHO-PortList-App.git
-cd WHO-PortList-App
-Create a file named secrets.R in the same folder:
+The app automatically reads from the GitHub-hosted CSV (`who_history.csv`) to display up-to-date results.
 
-r
-Copiar código
-# secrets.R  -- DO NOT COMMIT THIS FILE
-Sys.setenv(
-  GITHUB_PAT = "ghp_your_token_here",            # classic PAT with 'repo' scope
-  GH_REPO    = "youruser/who-ports-history",     # e.g. "observatorio-saude/who-ports-history"
-  GH_PATH    = "who_history.csv",                # file path in repo
-  GH_BRANCH  = "main"                            # or 'master' if that’s your branch
-)
+---
 
-⚠️ Keep this file private. Add it to .gitignore (see below).
+**Automated Data Updates (GitHub Actions)**
 
-Run the app:
+This repository includes a **scheduled GitHub Actions workflow** that keeps the data synchronized with WHO’s public PDF source.
 
-r
-Copiar código
-shiny::runApp("WHO-PortList-App")
-🧠 How the GitHub persistence works
-Every time the app fetches new WHO data:
+**Schedule**
 
-It merges it with an existing CSV file in your GitHub repo (who_history.csv)
+Runs daily at **08:30**, **15:00**, and **22:00** (Europe/Lisbon time):
 
-Removes duplicates within the same timestamp
+schedule:
+  - cron: '30 8,15,22 * * *'
+  - 
+**Workflow Summary**
+Each scheduled run performs:
+Checkout the repository
+Install R and required system libraries (libpoppler, etc.)
+Run the update script cron/job_fetch_who.R
+Downloads and parses the latest WHO IHR Ports PDF
+Writes a timestamped CSV snapshot: snapshots/who_ports_YYYYmmdd-HHMM.csv
+Updates and deduplicates the rolling file: who_history.csv
+Commit and push changes back to the repository automatically
 
-Commits the updated CSV back using your Personal Access Token (GITHUB_PAT)
+**Authentication & Environment Variables**
+The workflow uses GitHub’s built-in GITHUB_TOKEN, automatically mapped to GITHUB_PAT for GitHub API access.
 
-Example target repository
-https://github.com/observatorio-saude/who-ports-history
-The repo only needs one file: who_history.csv.
+Variable	Description	Default / Example
+GH_REPO	Target repository (owner/repo)	${{ github.repository }}
+GH_BRANCH	Branch to update	main
+GH_PATH	Rolling history file	who_history.csv
+GH_SNAPSHOT_DIR	Directory for timestamped snapshots	snapshots
+GITHUB_PAT	Authentication token for gh API	${{ secrets.GITHUB_TOKEN }}
 
-The app handles the rest.
+**Setting Up Your Own Automated Job**
+You can fork this repository and instantly have the same automation running.
 
-☁️ Deploying to ShinyApps.io
-Create an account at shinyapps.io.
+1️⃣ Fork the repository
+Click Fork in GitHub to create your own copy.
 
-In R, install the rsconnect package:
-install.packages("rsconnect")
-Authorize your R environment (one-time setup):
+2️⃣ Enable GitHub Actions
+Go to the Actions tab in your fork → click Enable workflows.
 
-rsconnect::setAccountInfo(
-  name='your-account-name',
-  token='xxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-  secret='xxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-)
+3️⃣ (Optional) Adjust schedule
+Edit .github/workflows/who_ports.yml and modify the cron: line if you want a different update frequency.
 
-You can get these values from your shinyapps.io dashboard → Account → Tokens.
+4️⃣ Commit and push
+Once pushed, GitHub Actions will automatically start running the workflow on schedule.
 
-Deploy the app:
-library(rsconnect)
-rsconnect::deployApp(appFiles = c("app.R","get_who_data.R","DESCRIPTION","secrets.R"))
-Once deployed, shinyapps.io will give you a public link like:
-https://observatorio-saude-matosinhos.shinyapps.io/WHOPortList/
+5️⃣ View results
+Go to the Actions tab → select WHO Ports snapshots → view logs and output.
 
-🔒 Security notes
-Never commit secrets.R or your GitHub token.
-Add it to .gitignore:
+Example run output:
+OK: wrote snapshots/who_ports_20251028-0830.csv and updated who_history.csv on branch main
 
-# local secrets
-secrets.R
+**Manual Execution**
+To test or run the update manually:
+  From R:
+    source("cron/job_fetch_who.R")
+  From terminal:
+    Rscript cron/job_fetch_who.R
 
-# RStudio artifacts
-.Rproj.user
-.Rhistory
-.RData
-.Ruserdata
+**Notes**
+Parsing uses pdftools + regex/string cleaning (no Java).
+The cron workflow automatically creates missing CSVs on the first run.
+Each timestamped file preserves historical snapshots for reproducibility.
+The Shiny app always reads directly from the GitHub data, ensuring consistency with the latest snapshot.
 
-# Environment configs
-.Renviron
+**Credits**
+Author: USP - Public Health Unit, Local Health Unit of Matosinhos
+Maintainer: Alberto José Fernandes
+Contact: albertojose.fernandes@ulsm.min-saude.pt
 
+**License**
+This project is open-source under the MIT License.
+Pull requests - welcome
 
-Use a classic GitHub Personal Access Token with repo scope.
-Fine-grained tokens often fail in R’s gh package.
-
-🕐 Data update logic
-Each run of the app does:
-
-Download WHO PDF
-Parse and clean data into a data.frame
-Add current date (dd/mm/yyyy)
-Merge with existing history file
-Remove duplicates for same day
-Save back to GitHub CSV
-
-🧾 License
-This code is released for public health research and education.
-
-Attribution required:
-Developed by USP – Public Health Unit, Local Health Unit of Matosinhos (ULSM), Portugal.
-
-📬 Contact
-Lead author: Alberto José Fernandes
-Institution: Unidade de Saúde Pública, ULS Matosinhos
-Email: albertojose.fernandes@ulsm.min-saude.pt
-
-GitHub Issues / Pull requests: welcome
+This project is open-source under the MIT License.
