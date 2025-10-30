@@ -115,25 +115,40 @@ Example run output:
 OK: wrote snapshots/who_ports_20251028-0830.csv and updated who_history.csv on branch main
 
 **Manual Execution**
+
 To test or run the update manually:
+
   From R:
+    
     source("cron/job_fetch_who.R")
+  
   From terminal:
+    
     Rscript cron/job_fetch_who.R
 
 **Notes**
+
 Parsing uses pdftools + regex/string cleaning (no Java).
+
 The cron workflow automatically creates missing CSVs on the first run.
+
 Each timestamped file preserves historical snapshots for reproducibility.
+
 The Shiny app always reads directly from the GitHub data, ensuring consistency with the latest snapshot.
 
 **Credits**
+
 Author: USP - Public Health Unit, Local Health Unit of Matosinhos
+
 Maintainer: Alberto José Fernandes
+
 Contact: albertojose.fernandes@ulsm.min-saude.pt
 
+
 **License**
+
 This project is open-source under the MIT License.
+
 Pull requests - welcome
 
 This project is open-source under the MIT License.
