@@ -111,6 +111,13 @@ get_who_port_list <- function(
       dplyr::select(., all_of(want))
     }
   
+  df_clean <- df_clean %>%
+    dplyr::mutate(across(c(SSCC, SSCEC, Extension), ~ case_when(
+      stringr::str_detect(., "\\[\\s*[xX]\\s*\\]") ~ 1L,
+      stringr::str_detect(., "\\[\\s*\\]") ~ 0L,
+      TRUE ~ NA_integer_
+    )))
+  
   df_clean
 }
 
