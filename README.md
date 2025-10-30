@@ -87,11 +87,11 @@ Commit and push changes back to the repository automatically
 The workflow uses GitHub’s built-in GITHUB_TOKEN, automatically mapped to GITHUB_PAT for GitHub API access.
 
 Variable	Description	Default / Example
-GH_REPO	Target repository (owner/repo)	${{ github.repository }}
-GH_BRANCH	Branch to update	main
-GH_PATH	Rolling history file	who_history.csv
-GH_SNAPSHOT_DIR	Directory for timestamped snapshots	snapshots
-GITHUB_PAT	Authentication token for gh API	${{ secrets.GITHUB_TOKEN }}
+  GH_REPO	Target repository (owner/repo)
+  GH_BRANCH	Branch to update
+  GH_PATH	Rolling history file
+  GH_SNAPSHOT_DIR	Directory for timestamped snapshots	snapshots
+  GITHUB_PAT	Authentication token for gh API
 
 **Setting Up Your Own Automated Job**
 You can fork this repository and instantly have the same automation running.
