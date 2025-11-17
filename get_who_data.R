@@ -41,7 +41,7 @@ get_who_port_list <- function(
   utils::download.file(pdf_url, tmp, mode = "wb", quiet = quietly)
   
   #### Manage csv content ####
-  txt <- readLines(tmp)
+  txt <- readLines(tmp, warn = FALSE)
   txt <- gsub(", ", ";", txt, fixed = FALSE)
   all_lines <- read.csv(textConnection(txt))
   all_lines[] <- lapply(all_lines, function(x) gsub(";", ", ", x, fixed = TRUE))
@@ -57,6 +57,7 @@ get_who_port_list <- function(
     df
   }
   all_lines <- shift_cols(all_lines)
+  all_lines
 }
 
 # ---- GitHub CSV persistence via GitHub Contents API -------------------------
@@ -198,6 +199,11 @@ append_who_history <- function(existing = NULL, new_snapshot) {
     for (m in missing_in_new) new_snapshot[[m]] <- NA_character_
   }
   new_snapshot <- dplyr::select(new_snapshot, dplyr::all_of(cols))
+  existing <- existing %>%
+    dplyr::mutate(dplyr::across(dplyr::all_of(cols), as.character))
+  
+  new_snapshot <- new_snapshot %>%
+    dplyr::mutate(dplyr::across(dplyr::all_of(cols), as.character))
   
   # 3) Bind + dedupe on all content columns + Date
   dplyr::bind_rows(existing, new_snapshot) |>
