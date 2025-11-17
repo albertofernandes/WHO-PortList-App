@@ -57,6 +57,7 @@ get_who_port_list <- function(
     df
   }
   all_lines <- shift_cols(all_lines)
+  all_lines$Date <- format(Sys.Date(), today_fmt)
   all_lines
 }
 
