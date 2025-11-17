@@ -224,11 +224,6 @@ update_history_github <- function(new_snapshot,
                                   repo   = Sys.getenv("GH_REPO"),
                                   path   = Sys.getenv("GH_PATH"),
                                   branch = Sys.getenv("GH_BRANCH", unset = "main")) {
-  existing <- gh_read_csv(repo, path, ref = branch)
-  prev_sha <- if (!is.null(existing)) attr(existing, "sha") else NULL
-  
-  combined <- append_who_history(existing, new_snapshot)
-  
   # --- build a safe scalar commit message ---
   dates <- unique(new_snapshot$Date)
   dates <- dates[!is.na(dates)]
@@ -240,16 +235,38 @@ update_history_github <- function(new_snapshot,
     commit_msg <- "Append WHO snapshot"
   }
   
-  new_sha <- gh_write_csv(
-    combined,
-    repo   = repo,
-    path   = path,
-    branch = branch,
-    commit_message = sprintf("Append WHO snapshot %s", unique(new_snapshot$Date)),
-    prev_sha = prev_sha
-  )
+  # small helper that actually does: read -> append -> write
+  do_update <- function() {
+    existing <- gh_read_csv(repo, path, ref = branch)
+    prev_sha <- if (!is.null(existing)) attr(existing, "sha") else NULL
+    
+    combined <- append_who_history(existing, new_snapshot)
+    
+    new_sha <- gh_write_csv(
+      combined,
+      repo           = repo,
+      path           = path,
+      branch         = branch,
+      commit_message = commit_msg,
+      prev_sha       = prev_sha
+    )
+    
+    attr(combined, "sha") <- new_sha
+    combined
+  }
   
-  attr(combined, "sha") <- new_sha
-  combined
+  # Try once; on 409, re-read and try again
+  tryCatch(
+    do_update(),
+    error = function(e) {
+      msg <- conditionMessage(e)
+      if (grepl("409", msg)) {
+        warning("GitHub 409 conflict detected; re-reading file and retrying once...")
+        return(do_update())
+      } else {
+        stop(e)
+      }
+    }
+  )
 }
 # -----------------------------------------------------------------------------
