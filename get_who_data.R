@@ -153,20 +153,15 @@ gh_write_csv <- function(data,
   if (!requireNamespace("readr", quietly = TRUE)) stop("Install 'readr'")
   if (!requireNamespace("base64enc", quietly = TRUE)) stop("Install 'base64enc'")
   
-  # --- force commit_message into a single, non-empty string ---
+  # normalize commit_message to single non-empty string
   if (length(commit_message) == 0L || all(is.na(commit_message))) {
     commit_message <- "Update who_history.csv"
   } else {
     commit_message <- paste0(commit_message[!is.na(commit_message)], collapse = "; ")
   }
-  # --------------------------------------------------------------
   
-  
-  # Serialize to CSV
   tf <- tempfile(fileext = ".csv")
   readr::write_csv(data, tf)
-  
-  # Read and base64-encode
   b64 <- base64enc::base64encode(tf)
   
   owner <- strsplit(repo, "/")[[1]][1]
@@ -177,13 +172,19 @@ gh_write_csv <- function(data,
     content = b64,
     branch  = branch
   )
-  # include 'sha' only for updates (not on create)
-  if (!is.null(prev_sha)) body$sha <- prev_sha
+  if (!is.null(prev_sha)) {
+    body$sha <- prev_sha
+  }
   
-  res <- gh::gh("PUT /repos/{owner}/{repo}/contents/{path}",
-                owner = owner, repo = repoN, path = path,
-                .token = Sys.getenv("GITHUB_PAT"),
-                .send_json = TRUE, !!!body)
+  res <- gh::gh(
+    "PUT /repos/{owner}/{repo}/contents/{path}",
+    owner      = owner,
+    repo       = repoN,
+    path       = path,
+    .token     = Sys.getenv("GITHUB_PAT"),
+    .send_json = TRUE,
+    !!!body
+  )
   res$content$sha
 }
 
