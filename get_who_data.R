@@ -152,6 +152,15 @@ gh_write_csv <- function(data,
   if (!requireNamespace("readr", quietly = TRUE)) stop("Install 'readr'")
   if (!requireNamespace("base64enc", quietly = TRUE)) stop("Install 'base64enc'")
   
+  # --- force commit_message into a single, non-empty string ---
+  if (length(commit_message) == 0L || all(is.na(commit_message))) {
+    commit_message <- "Update who_history.csv"
+  } else {
+    commit_message <- paste0(commit_message[!is.na(commit_message)], collapse = "; ")
+  }
+  # --------------------------------------------------------------
+  
+  
   # Serialize to CSV
   tf <- tempfile(fileext = ".csv")
   readr::write_csv(data, tf)
@@ -218,6 +227,17 @@ update_history_github <- function(new_snapshot,
   prev_sha <- if (!is.null(existing)) attr(existing, "sha") else NULL
   
   combined <- append_who_history(existing, new_snapshot)
+  
+  # --- build a safe scalar commit message ---
+  dates <- unique(new_snapshot$Date)
+  dates <- dates[!is.na(dates)]
+  
+  if (length(dates) >= 1) {
+    date_str <- paste(dates, collapse = ", ")
+    commit_msg <- sprintf("Append WHO snapshot %s", date_str)
+  } else {
+    commit_msg <- "Append WHO snapshot"
+  }
   
   new_sha <- gh_write_csv(
     combined,
