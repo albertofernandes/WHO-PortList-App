@@ -190,7 +190,6 @@ gh_write_csv <- function(data,
 .who_content_cols <- c("Country","Name","Code","SSCC","SSCEC","EXTENSION","Other.Information")
 
 append_who_history <- function(existing = NULL, new_snapshot) {
-  cols <- c(.who_content_cols, "Date")
   
   # 1) If no existing file (first run) or wrong shape, create a 0-row tibble with the expected columns
   if (is.null(existing) || !all(cols %in% names(existing))) {
