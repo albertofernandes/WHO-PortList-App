@@ -102,8 +102,6 @@ fix_singletons_into_prev_last <- function(df, sep = " ") {
   df[keep, , drop = FALSE]
 }
 
-
-
 gh_require_env <- function() {
   if (!nzchar(Sys.getenv("GITHUB_PAT"))) stop("Missing GITHUB_PAT")
   if (!nzchar(Sys.getenv("GH_REPO"))) stop("Missing GH_REPO ('user/repo')")
@@ -179,7 +177,7 @@ gh_write_csv <- function(data,
   res$content$sha
 }
 
-.who_content_cols <- c("Name","Code","SSCC","SSCEC","Extension","Other information")
+.who_content_cols <- c("Country","Name","Code","SSCC","SSCEC","EXTENSION","Other.Information")
 
 append_who_history <- function(existing = NULL, new_snapshot) {
   cols <- c(.who_content_cols, "Date")
