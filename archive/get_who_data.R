@@ -32,76 +32,98 @@ suppressPackageStartupMessages({
 #   quietly  : logical, suppress warnings/messages (default TRUE)
 
 get_who_port_list <- function(
-    pdf_url  = "https://extranet.who.int/ihr/poedata/public/php/csvversion.php?lang=en&POEpage=0",
+    pdf_url  = "https://extranet.who.int/ihr/poedata/data_entry/ctrl/portListPDFCtrl.php",
     today_fmt = "%d/%m/%Y",
     quietly   = TRUE
 ) {
-  #### Download to temp (binary) ####
-  tmp <- tempfile(fileext = ".csv")
+  # Download to temp (binary)
+  tmp <- tempfile(fileext = ".pdf")
   utils::download.file(pdf_url, tmp, mode = "wb", quiet = quietly)
   
-  #### Manage csv content ####
-  txt <- readLines(tmp)
-  txt <- gsub(", ", ";", txt, fixed = FALSE)
-  all_lines <- read.csv(textConnection(txt))
-  all_lines[] <- lapply(all_lines, function(x) gsub(";", ", ", x, fixed = TRUE))
-  all_lines <- fix_singletons_into_prev_last(all_lines)
-  shift_cols <- function(df) {
-    for (i in seq_len(nrow(df))) {
-      # If all first three columns are NA, shift
-      if (all(df[i, 6]=="")) {
-        df[i, 4:6] <- df[i, 3:5]
-        df[i, 3:5] <- NA
-      }
-    }
-    df
+  # Extract text (each page is one string)
+  pages_text <- pdftools::pdf_text(tmp)
+  
+  # Parse a page into non-empty lines
+  parse_page_lines <- function(txt_page) {
+    lines <- strsplit(txt_page, "\n")[[1]]
+    lines <- str_trim(lines)
+    lines[lines != ""]
   }
-  all_lines <- shift_cols(all_lines)
+  
+  all_lines <- map(pages_text, parse_page_lines) |> unlist()
+  
+  # Split a line into columns by 2+ spaces (fixed-width heuristic)
+  split_line_to_cols <- function(line) {
+    cols <- str_split(line, "\\s{2,}", simplify = TRUE)
+    cols <- str_trim(cols)
+    cols[cols != ""]
+  }
+  
+  # Build rows, pad to max column count
+  cols_list <- map(all_lines, split_line_to_cols)
+  max_cols  <- max(purrr::map_int(cols_list, length), 1L)
+  
+  df_rows <- map_dfr(cols_list, function(cols) {
+    row <- as.list(c(cols, rep(NA_character_, max_cols - length(cols))))
+    names(row) <- paste0("V", seq_len(max_cols))
+    tibble::as_tibble(row)
+  })
+  
+  # Force header names for the first 6 columns
+  target_headers <- c("Name", "Code", "SSCC", "SSCEC", "Extension", "Other information")
+  names(df_rows)[seq_len(min(6, ncol(df_rows)))] <- target_headers[seq_len(min(6, ncol(df_rows)))]
+  
+  # Core cleaning & your rules (keeps rows with some NAs; only drops all-blank/NA in 2–6 when requested)
+  df_clean <- df_rows %>%
+    # Normalize blanks to NA
+    mutate(across(everything(), ~ ifelse(. %in% c("", "NA"), NA, .))) %>%
+    # Drop header repeats (first column equals literal "Name")
+    filter(!(Name %in% c("Name"))) %>%
+    # Drop only rows where ALL of columns 2–6 are NA (keep if any has data)
+    filter(!if_all(c(Code, SSCC, SSCEC, Extension, `Other information`), is.na)) %>%
+    # Remove rows where column 2 has "Page" (keep if Code is NA)
+    filter(is.na(Code) | !str_detect(Code, regex("\\bPage\\b", ignore_case = TRUE))) %>%
+    # Conditional right-shift when column 2 contains [ ] or [x]
+    mutate(
+      shift_flag = str_detect(Code, "\\[(x| )\\]"),
+      `Other information` = if_else(shift_flag, Extension, `Other information`),
+      Extension           = if_else(shift_flag, SSCEC, Extension),
+      SSCEC               = if_else(shift_flag, SSCC, SSCEC),
+      SSCC                = if_else(shift_flag, Code, SSCC),
+      Code                = if_else(shift_flag, NA_character_, Code)
+    ) %>%
+    select(-shift_flag) %>%
+    filter(!is.na(SSCC)) %>% 
+    filter(!is.na(SSCEC)) %>% 
+    filter(!is.na(Extension)) %>% 
+    # Add timestamp column
+    mutate(Date = format(Sys.Date(), today_fmt)) %>%
+    # Squish whitespace for readability, keep NAs
+    mutate(across(everything(), ~ ifelse(is.na(.), NA, str_squish(as.character(.))))) %>%
+    # Ensure exactly the expected columns exist (some PDFs may produce fewer columns)
+    {
+      # Guarantee all target columns + Date exist
+      want <- c(target_headers, "Date")
+      missing <- setdiff(want, names(.))
+      if (length(missing)) {
+        for (m in missing) .[[m]] <- NA_character_
+      }
+      dplyr::select(., all_of(want))
+    }
+  
+  df_clean <- df_clean %>%
+    dplyr::mutate(across(c(SSCC, SSCEC, Extension), ~ case_when(
+      stringr::str_detect(., "\\[\\s*[xX]\\s*\\]") ~ 1L,
+      stringr::str_detect(., "\\[\\s*\\]") ~ 0L,
+      TRUE ~ NA_integer_
+    )))
+  
+  df_clean
 }
 
 # ---- GitHub CSV persistence via GitHub Contents API -------------------------
 # deps: install.packages(c("gh","readr","base64enc"))
 # Uses env vars: GITHUB_PAT, GH_REPO, GH_PATH, GH_BRANCH (default "main")
-fix_singletons_into_prev_last <- function(df, sep = " ") {
-  # treat blanks like missing
-  is_used <- function(x) !is.na(x) & nzchar(trimws(as.character(x)))
-  last_col <- ncol(df)
-  
-  # make sure last column can hold pasted text
-  df[[last_col]] <- as.character(df[[last_col]])
-  
-  keep <- rep(TRUE, nrow(df))
-  anchor <- NA_integer_
-  
-  for (i in seq_len(nrow(df))) {
-    used_count <- sum(is_used(df[i, ]))
-    
-    if (used_count == 1L) {
-      # value present in exactly one column on this row
-      idx <- which(is_used(df[i, ]))[1]
-      val <- as.character(df[i, idx])
-      
-      if (!is.na(anchor)) {
-        # append to the last column of the most recent non-singleton row
-        cur <- df[anchor, last_col]
-        df[anchor, last_col] <-
-          if (!is_used(cur)) val else paste0(cur, sep, val)
-        keep[i] <- FALSE                       # drop this singleton row
-      } else {
-        # first row is a singleton — nothing above to attach to; keep it
-        anchor <- i
-      }
-      
-    } else {
-      # normal row (0 cells used is weird, 2+ is normal) — becomes new anchor
-      anchor <- i
-    }
-  }
-  
-  df[keep, , drop = FALSE]
-}
-
-
 
 gh_require_env <- function() {
   if (!nzchar(Sys.getenv("GITHUB_PAT"))) stop("Missing GITHUB_PAT")
