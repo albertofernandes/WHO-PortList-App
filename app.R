@@ -131,11 +131,16 @@ server <- function(input, output, session) {
   observeEvent(ports_by_country(), {
     ports <- ports_by_country()
     if (nrow(ports) > 0) {
+      # Helper to check if code is valid and should be displayed
+      has_valid_code <- function(code) {
+        !is.na(code) & nzchar(as.character(code)) & code != "NA"
+      }
+      
       # Create named vector: labels show "Name (Code) - Country", values are Name
       port_choices <- setNames(
         ports$Name,
         paste0(ports$Name, 
-               ifelse(!is.na(ports$Code) & nzchar(as.character(ports$Code)) & ports$Code != "NA", 
+               ifelse(has_valid_code(ports$Code), 
                       paste0(" (", ports$Code, ")"), ""),
                " - ", ports$Country)
       )
@@ -170,14 +175,12 @@ server <- function(input, output, session) {
     }
     
     # Filter by date range if not showing all dates
-    if (!isTruthy(input$show_all_dates)) {
-      if (!is.null(input$date_range)) {
-        df <- df %>%
-          dplyr::mutate(Date_parsed = as.Date(Date, format = "%d/%m/%Y")) %>%
-          dplyr::filter(Date_parsed >= input$date_range[1],
-                       Date_parsed <= input$date_range[2]) %>%
-          dplyr::select(-Date_parsed)
-      }
+    if (!isTruthy(input$show_all_dates) && !is.null(input$date_range)) {
+      df <- df %>%
+        dplyr::mutate(Date_parsed = as.Date(Date, format = "%d/%m/%Y")) %>%
+        dplyr::filter(Date_parsed >= input$date_range[1],
+                     Date_parsed <= input$date_range[2]) %>%
+        dplyr::select(-Date_parsed)
     }
     
     df
