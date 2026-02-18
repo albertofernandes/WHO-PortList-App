@@ -37,14 +37,39 @@ ui <- fluidPage(
   titlePanel("WHO Port List"),
   sidebarLayout(
     sidebarPanel(
-      actionButton("refresh", "Refresh now"),
-      helpText("Data is fetched live from WHO and parsed locally (Java-free)."),
-      helpText("Filter the table, then select one or more ports to plot their status over time.")
+      # Data info panel
+      wellPanel(
+        h4("Data Information"),
+        verbatimTextOutput("data_info")
+      ),
+      
+      # Country selector
+      selectInput("country", "Select Country:", 
+                  choices = NULL),
+      
+      # Port selector (searchable dropdown)
+      selectizeInput("port_select", "Select Port:", 
+                     choices = NULL, 
+                     multiple = FALSE,
+                     options = list(placeholder = 'Search by name or code')),
+      
+      # Date range filter
+      dateRangeInput("date_range", "Date Range:",
+                     start = NULL, end = NULL),
+      
+      checkboxInput("show_all_dates", "Show all available dates", value = TRUE),
+      
+      # Refresh button
+      actionButton("refresh", "Refresh Data"),
+      
+      helpText("Data is fetched live from WHO and parsed locally (Java-free).")
     ),
     mainPanel(
-      DT::DTOutput("tbl"),
+      # Plot at the top (more important than table)
+      plotOutput("status_plot", height = 420),
       tags$hr(),
-      plotOutput("status_plot", height = 420)
+      # Table below, showing only selected port's data
+      DT::DTOutput("tbl")
     )
   )
 )
@@ -53,6 +78,11 @@ server <- function(input, output, session) {
   history_rv <- reactiveVal(tibble::tibble())
   
   do_initial <- isTRUE(tolower(Sys.getenv("AUTO_REFRESH_ON_START", "true")) == "true")
+  
+  # Helper function to check if a port code is valid and should be displayed
+  has_valid_code <- function(code) {
+    !is.na(code) & nzchar(as.character(code)) & code != "NA"
+  }
 
   # Initial fetch + persist to GitHub
   observeEvent(TRUE, {
@@ -68,7 +98,133 @@ server <- function(input, output, session) {
     history_rv(hist2)
   })
   
+  # Reactive: Get unique countries
+  unique_countries <- reactive({
+    df <- history_rv()
+    req(nrow(df) > 0)
+    sort(unique(df$Country))
+  })
+  
+  # Update country choices when data changes
+  observeEvent(history_rv(), {
+    req(nrow(history_rv()) > 0)
+    countries <- unique_countries()
+    updateSelectInput(session, "country", 
+                     choices = c("All Countries" = "", countries),
+                     selected = "")
+  })
+  
+  # Reactive: Get ports filtered by country
+  ports_by_country <- reactive({
+    df <- history_rv()
+    req(nrow(df) > 0)
+    
+    if (isTruthy(input$country)) {
+      df <- df %>% dplyr::filter(Country == input$country)
+    }
+    
+    # Get unique ports with their codes
+    ports <- df %>%
+      dplyr::select(Country, Name, Code) %>%
+      dplyr::distinct() %>%
+      dplyr::arrange(Name)
+    
+    ports
+  })
+  
+  # Update port choices when country changes
+  observeEvent(ports_by_country(), {
+    ports <- ports_by_country()
+    if (nrow(ports) > 0) {
+      # Create named vector: labels show "Name (Code) - Country", values are Name
+      port_choices <- setNames(
+        ports$Name,
+        paste0(ports$Name, 
+               ifelse(has_valid_code(ports$Code), 
+                      paste0(" (", ports$Code, ")"), ""),
+               " - ", ports$Country)
+      )
+      updateSelectizeInput(session, "port_select", 
+                          choices = c("Select a port" = "", port_choices),
+                          selected = "")
+    }
+  })
+  
+  # Update date range when data changes
+  observeEvent(history_rv(), {
+    df <- history_rv()
+    if (nrow(df) > 0) {
+      dates <- as.Date(df$Date, format = "%d/%m/%Y")
+      valid_dates <- dates[!is.na(dates)]
+      if (length(valid_dates) > 0) {
+        updateDateRangeInput(session, "date_range",
+                            start = min(valid_dates),
+                            end = max(valid_dates))
+      }
+    }
+  })
+  
+  # Reactive: Get filtered data by port and date
+  filtered_data <- reactive({
+    df <- history_rv()
+    req(nrow(df) > 0)
+    
+    # Filter by selected port
+    if (isTruthy(input$port_select)) {
+      df <- df %>% dplyr::filter(Name == input$port_select)
+    }
+    
+    # Filter by date range if not showing all dates
+    if (!isTruthy(input$show_all_dates) && !is.null(input$date_range)) {
+      df <- df %>%
+        dplyr::mutate(Date_parsed = as.Date(Date, format = "%d/%m/%Y")) %>%
+        dplyr::filter(Date_parsed >= input$date_range[1],
+                     Date_parsed <= input$date_range[2]) %>%
+        dplyr::select(-Date_parsed)
+    }
+    
+    df
+  })
+  
+  # Output: Data information
+  output$data_info <- renderText({
+    df <- history_rv()
+    req(nrow(df) > 0)
+    
+    dates <- as.Date(df$Date, format = "%d/%m/%Y")
+    valid_dates <- dates[!is.na(dates)]
+    
+    n_ports <- df %>%
+      dplyr::select(Country, Name, Code) %>%
+      dplyr::distinct() %>%
+      nrow()
+    n_countries <- length(unique(df$Country))
+    
+    if (length(valid_dates) > 0) {
+      paste0(
+        "Last update: ", format(max(valid_dates), "%d/%m/%Y"), "\n",
+        "Total ports: ", n_ports, "\n",
+        "Countries: ", n_countries, "\n",
+        "Date range: ", format(min(valid_dates), "%d/%m/%Y"), 
+        " to ", format(max(valid_dates), "%d/%m/%Y")
+      )
+    } else {
+      paste0(
+        "Total ports: ", n_ports, "\n",
+        "Countries: ", n_countries, "\n",
+        "No valid dates found in data"
+      )
+    }
+  })
+  
+  # Get selected port name (either from dropdown or table selection)
   selected_port_name <- reactive({
+    # First priority: dropdown selection
+    if (isTruthy(input$port_select)) {
+      return(input$port_select)
+    }
+    
+    # Fallback: table selection (for backwards compatibility)
     df_all <- history_rv()
     req(nrow(df_all) > 0)
     
@@ -157,7 +313,7 @@ server <- function(input, output, session) {
   })
   
   output$tbl <- renderDT({
-    df <- history_rv()                           # <- get the value
+    df <- filtered_data()                        # <- use filtered data
     req(is.data.frame(df), ncol(df) > 0)         # guard
     DT::datatable(
       df, 
