@@ -93,22 +93,20 @@ server <- function(input, output, session) {
     history_rv(hist2)
   })
   
-  # Update country choices when data changes
-  observeEvent(history_rv(), {
-    df <- history_rv()
-    if (nrow(df) > 0) {
-      countries <- sort(unique(df$Country))
-      updateSelectInput(session, "country", 
-                       choices = c("All Countries" = "", countries),
-                       selected = "")
-    }
-  })
-  
   # Reactive: Get unique countries
   unique_countries <- reactive({
     df <- history_rv()
     req(nrow(df) > 0)
     sort(unique(df$Country))
+  })
+  
+  # Update country choices when data changes
+  observeEvent(history_rv(), {
+    req(nrow(history_rv()) > 0)
+    countries <- unique_countries()
+    updateSelectInput(session, "country", 
+                     choices = c("All Countries" = "", countries),
+                     selected = "")
   })
   
   # Reactive: Get ports filtered by country
@@ -152,9 +150,12 @@ server <- function(input, output, session) {
     df <- history_rv()
     if (nrow(df) > 0) {
       dates <- as.Date(df$Date, format = "%d/%m/%Y")
-      updateDateRangeInput(session, "date_range",
-                          start = min(dates, na.rm = TRUE),
-                          end = max(dates, na.rm = TRUE))
+      valid_dates <- dates[!is.na(dates)]
+      if (length(valid_dates) > 0) {
+        updateDateRangeInput(session, "date_range",
+                            start = min(valid_dates),
+                            end = max(valid_dates))
+      }
     }
   })
   
@@ -188,19 +189,29 @@ server <- function(input, output, session) {
     req(nrow(df) > 0)
     
     dates <- as.Date(df$Date, format = "%d/%m/%Y")
+    valid_dates <- dates[!is.na(dates)]
+    
     n_ports <- df %>%
       dplyr::select(Country, Name, Code) %>%
       dplyr::distinct() %>%
       nrow()
     n_countries <- length(unique(df$Country))
     
-    paste0(
-      "Last update: ", format(max(dates, na.rm = TRUE), "%d/%m/%Y"), "\n",
-      "Total ports: ", n_ports, "\n",
-      "Countries: ", n_countries, "\n",
-      "Date range: ", format(min(dates, na.rm = TRUE), "%d/%m/%Y"), 
-      " to ", format(max(dates, na.rm = TRUE), "%d/%m/%Y")
-    )
+    if (length(valid_dates) > 0) {
+      paste0(
+        "Last update: ", format(max(valid_dates), "%d/%m/%Y"), "\n",
+        "Total ports: ", n_ports, "\n",
+        "Countries: ", n_countries, "\n",
+        "Date range: ", format(min(valid_dates), "%d/%m/%Y"), 
+        " to ", format(max(valid_dates), "%d/%m/%Y")
+      )
+    } else {
+      paste0(
+        "Total ports: ", n_ports, "\n",
+        "Countries: ", n_countries, "\n",
+        "No valid dates found in data"
+      )
+    }
   })
   
   # Get selected port name (either from dropdown or table selection)
