@@ -269,7 +269,7 @@ server <- function(input, output, session) {
       dplyr::mutate(Date = as.Date(Date, format = "%d/%m/%Y")) %>%
       dplyr::arrange(Date) %>%
       tidyr::pivot_longer(
-        c(SSCC, SSCEC, Extension),
+        c(SSCC, SSCEC, EXTENSION),
         names_to = "Criterion",
         values_to = "Mark"
       ) %>%
