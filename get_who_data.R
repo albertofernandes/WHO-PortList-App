@@ -58,12 +58,12 @@ get_who_port_list <- function(
   }
   all_lines <- shift_cols(all_lines)
   
-  # Normalize column names to match what app.R expects
-  if ("EXTENSION" %in% names(all_lines)) {
-    names(all_lines)[names(all_lines) == "EXTENSION"] <- "Extension"
-  }
-  if ("Other.Information" %in% names(all_lines)) {
-    names(all_lines)[names(all_lines) == "Other.Information"] <- "Other.Information"
+  # Normalize column names to match canonical names
+  col_renames <- c("EXTENSION" = "Extension")
+  for (old in names(col_renames)) {
+    if (old %in% names(all_lines)) {
+      names(all_lines)[names(all_lines) == old] <- col_renames[[old]]
+    }
   }
   
   all_lines$Date <- format(Sys.Date(), today_fmt)

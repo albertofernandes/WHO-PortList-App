@@ -83,19 +83,28 @@ server <- function(input, output, session) {
   has_valid_code <- function(code) {
     !is.na(code) & nzchar(as.character(code)) & code != "NA"
   }
-
+  
+  # FIX 1: Helper to normalize column names (EXTENSION -> Extension)
+  # This handles data from GitHub CSV which may have uppercase column names
+  normalize_col_names <- function(df) {
+    if ("EXTENSION" %in% names(df) && !("Extension" %in% names(df))) {
+      names(df)[names(df) == "EXTENSION"] <- "Extension"
+    }
+    df
+  }
+  
   # Initial fetch + persist to GitHub
   observeEvent(TRUE, {
     snap  <- get_who_port_list()
     hist2 <- update_history_github(snap)   # reads CSV from GH, appends, dedupes, commits back
-    history_rv(hist2)
+    history_rv(normalize_col_names(hist2))  # FIX 1: normalize before storing
   }, once = TRUE)
   
   # Manual refresh button
   observeEvent(input$refresh, {
     snap  <- get_who_port_list()
     hist2 <- update_history_github(snap)
-    history_rv(hist2)
+    history_rv(normalize_col_names(hist2))  # FIX 1: normalize before storing
   })
   
   # Reactive: Get unique countries
@@ -110,8 +119,8 @@ server <- function(input, output, session) {
     req(nrow(history_rv()) > 0)
     countries <- unique_countries()
     updateSelectInput(session, "country", 
-                     choices = c("All Countries" = "", countries),
-                     selected = "")
+                      choices = c("All Countries" = "", countries),
+                      selected = "")
   })
   
   # Reactive: Get ports filtered by country
@@ -136,6 +145,7 @@ server <- function(input, output, session) {
   observeEvent(ports_by_country(), {
     ports <- ports_by_country()
     if (nrow(ports) > 0) {
+      # Create named vector: labels show "Name (Code) - Country", values are Name
       port_choices <- setNames(
         ports$Name,
         paste0(ports$Name, 
@@ -146,7 +156,7 @@ server <- function(input, output, session) {
       updateSelectizeInput(session, "port_select", 
                            choices = c("Select a port" = "", port_choices),
                            selected = "",
-                           server = TRUE)  # <-- add server = TRUE
+                           server = TRUE)  # FIX 2: server-side selectize for performance
     }
   })
   
@@ -158,8 +168,8 @@ server <- function(input, output, session) {
       valid_dates <- dates[!is.na(dates)]
       if (length(valid_dates) > 0) {
         updateDateRangeInput(session, "date_range",
-                            start = min(valid_dates),
-                            end = max(valid_dates))
+                             start = min(valid_dates),
+                             end = max(valid_dates))
       }
     }
   })
@@ -169,17 +179,18 @@ server <- function(input, output, session) {
     df <- history_rv()
     req(nrow(df) > 0)
     
+    # FIX 3: Require a port to be selected before showing any table data
+    req(isTruthy(input$port_select))
+    
     # Filter by selected port
-    if (isTruthy(input$port_select)) {
-      df <- df %>% dplyr::filter(Name == input$port_select)
-    }
+    df <- df %>% dplyr::filter(Name == input$port_select)
     
     # Filter by date range if not showing all dates
     if (!isTruthy(input$show_all_dates) && !is.null(input$date_range)) {
       df <- df %>%
         dplyr::mutate(Date_parsed = as.Date(Date, format = "%d/%m/%Y")) %>%
         dplyr::filter(Date_parsed >= input$date_range[1],
-                     Date_parsed <= input$date_range[2]) %>%
+                      Date_parsed <= input$date_range[2]) %>%
         dplyr::select(-Date_parsed)
     }
     
@@ -264,12 +275,13 @@ server <- function(input, output, session) {
       )
     }
     
+    # FIX 1 already normalized EXTENSION -> Extension, so this now works
     df_full <- history_rv() %>%
       dplyr::filter(Name == port) %>%
       dplyr::mutate(Date = as.Date(Date, format = "%d/%m/%Y")) %>%
       dplyr::arrange(Date) %>%
       tidyr::pivot_longer(
-        c(SSCC, SSCEC, EXTENSION),
+        c(SSCC, SSCEC, Extension),
         names_to = "Criterion",
         values_to = "Mark"
       ) %>%
@@ -312,9 +324,10 @@ server <- function(input, output, session) {
       ggplot2::theme(legend.position = "bottom")
   })
   
+  # FIX 3: Table only renders after a port is selected (via filtered_data's req())
   output$tbl <- renderDT({
-    df <- filtered_data()                        # <- use filtered data
-    req(is.data.frame(df), ncol(df) > 0)         # guard
+    df <- filtered_data()
+    req(is.data.frame(df), nrow(df) > 0)  # FIX 3: nrow > 0 instead of ncol > 0
     DT::datatable(
       df, 
       options = list(pageLength = 25, scrollX = TRUE), 
@@ -322,7 +335,7 @@ server <- function(input, output, session) {
       selection = "single")
   })
 }
-  
+
 
 
 shinyApp(ui, server)
