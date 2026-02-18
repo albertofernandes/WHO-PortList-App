@@ -78,6 +78,11 @@ server <- function(input, output, session) {
   history_rv <- reactiveVal(tibble::tibble())
   
   do_initial <- isTRUE(tolower(Sys.getenv("AUTO_REFRESH_ON_START", "true")) == "true")
+  
+  # Helper function to check if a port code is valid and should be displayed
+  has_valid_code <- function(code) {
+    !is.na(code) & nzchar(as.character(code)) & code != "NA"
+  }
 
   # Initial fetch + persist to GitHub
   observeEvent(TRUE, {
@@ -131,11 +136,6 @@ server <- function(input, output, session) {
   observeEvent(ports_by_country(), {
     ports <- ports_by_country()
     if (nrow(ports) > 0) {
-      # Helper to check if code is valid and should be displayed
-      has_valid_code <- function(code) {
-        !is.na(code) & nzchar(as.character(code)) & code != "NA"
-      }
-      
       # Create named vector: labels show "Name (Code) - Country", values are Name
       port_choices <- setNames(
         ports$Name,
