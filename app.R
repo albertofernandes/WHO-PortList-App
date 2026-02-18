@@ -114,7 +114,7 @@ server <- function(input, output, session) {
     df <- history_rv()
     req(nrow(df) > 0)
     
-    if (!is.null(input$country) && input$country != "") {
+    if (isTruthy(input$country)) {
       df <- df %>% dplyr::filter(Country == input$country)
     }
     
@@ -165,7 +165,7 @@ server <- function(input, output, session) {
     req(nrow(df) > 0)
     
     # Filter by selected port
-    if (!is.null(input$port_select) && input$port_select != "") {
+    if (isTruthy(input$port_select)) {
       df <- df %>% dplyr::filter(Name == input$port_select)
     }
     
@@ -217,7 +217,7 @@ server <- function(input, output, session) {
   # Get selected port name (either from dropdown or table selection)
   selected_port_name <- reactive({
     # First priority: dropdown selection
-    if (!is.null(input$port_select) && input$port_select != "") {
+    if (isTruthy(input$port_select)) {
       return(input$port_select)
     }
     
