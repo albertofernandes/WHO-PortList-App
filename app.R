@@ -136,7 +136,6 @@ server <- function(input, output, session) {
   observeEvent(ports_by_country(), {
     ports <- ports_by_country()
     if (nrow(ports) > 0) {
-      # Create named vector: labels show "Name (Code) - Country", values are Name
       port_choices <- setNames(
         ports$Name,
         paste0(ports$Name, 
@@ -145,8 +144,9 @@ server <- function(input, output, session) {
                " - ", ports$Country)
       )
       updateSelectizeInput(session, "port_select", 
-                          choices = c("Select a port" = "", port_choices),
-                          selected = "")
+                           choices = c("Select a port" = "", port_choices),
+                           selected = "",
+                           server = TRUE)  # <-- add server = TRUE
     }
   })
   

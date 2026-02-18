@@ -57,6 +57,15 @@ get_who_port_list <- function(
     df
   }
   all_lines <- shift_cols(all_lines)
+  
+  # Normalize column names to match what app.R expects
+  if ("EXTENSION" %in% names(all_lines)) {
+    names(all_lines)[names(all_lines) == "EXTENSION"] <- "Extension"
+  }
+  if ("Other.Information" %in% names(all_lines)) {
+    names(all_lines)[names(all_lines) == "Other.Information"] <- "Other.Information"
+  }
+  
   all_lines$Date <- format(Sys.Date(), today_fmt)
   all_lines
 }
@@ -188,7 +197,7 @@ gh_write_csv <- function(data,
   res$content$sha
 }
 
-.who_content_cols <- c("Country","Name","Code","SSCC","SSCEC","EXTENSION","Other.Information")
+.who_content_cols <- c("Country","Name","Code","SSCC","SSCEC","Extension","Other.Information")
 
 append_who_history <- function(existing = NULL, new_snapshot) {
   cols <- c(.who_content_cols, "Date")
