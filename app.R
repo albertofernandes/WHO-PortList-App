@@ -62,7 +62,7 @@ ui <- fluidPage(
       # Refresh button
       actionButton("refresh", "Refresh Data"),
       
-      helpText("Data is fetched live from WHO and parsed locally (Java-free).")
+      helpText("Data is fetched live from WHO and parsed locally.")
     ),
     mainPanel(
       # Plot at the top (more important than table)
