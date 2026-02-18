@@ -135,7 +135,7 @@ server <- function(input, output, session) {
       port_choices <- setNames(
         ports$Name,
         paste0(ports$Name, 
-               ifelse(!is.na(ports$Code) & ports$Code != "NA" & ports$Code != "", 
+               ifelse(!is.na(ports$Code) & nzchar(as.character(ports$Code)) & ports$Code != "NA", 
                       paste0(" (", ports$Code, ")"), ""),
                " - ", ports$Country)
       )
@@ -170,7 +170,7 @@ server <- function(input, output, session) {
     }
     
     # Filter by date range if not showing all dates
-    if (!is.null(input$show_all_dates) && !input$show_all_dates) {
+    if (!isTruthy(input$show_all_dates)) {
       if (!is.null(input$date_range)) {
         df <- df %>%
           dplyr::mutate(Date_parsed = as.Date(Date, format = "%d/%m/%Y")) %>%
