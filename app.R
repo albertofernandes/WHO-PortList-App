@@ -84,27 +84,54 @@ server <- function(input, output, session) {
     !is.na(code) & nzchar(as.character(code)) & code != "NA"
   }
   
-  # FIX 1: Helper to normalize column names (EXTENSION -> Extension)
-  # This handles data from GitHub CSV which may have uppercase column names
-  normalize_col_names <- function(df) {
-    if ("EXTENSION" %in% names(df) && !("Extension" %in% names(df))) {
-      names(df)[names(df) == "EXTENSION"] <- "Extension"
-    }
-    df
+  # Helper to normalize and clean data
+normalize_and_clean <- function(df) {
+  # Normalize column names
+  if ("EXTENSION" %in% names(df) && !("Extension" %in% names(df))) {
+    names(df)[names(df) == "EXTENSION"] <- "Extension"
   }
+  
+  # Clean Date column - handle encoding issues and invalid dates
+  if ("Date" %in% names(df)) {
+    # First, ensure all Date values are valid strings (not NA, not too long)
+    df$Date <- tryCatch({
+      # Convert to character and handle encoding issues
+      date_char <- as.character(df$Date)
+      date_char <- iconv(date_char, to = "UTF-8", sub = "")  # Remove invalid characters
+      
+      # Replace dates that are too long or empty with today's date
+      date_char <- ifelse(is.na(date_char) | nchar(date_char) > 10 | nchar(date_char) == 0,
+                          format(Sys.Date(), "%d/%m/%Y"),
+                          date_char)
+      
+      date_char
+    }, error = function(e) {
+      # If anything fails, just return today's date for all
+      rep(format(Sys.Date(), "%d/%m/%Y"), nrow(df))
+    })
+  }
+  
+  # Clean all character columns for encoding issues
+  char_cols <- names(df)[sapply(df, is.character)]
+  for (col in char_cols) {
+    df[[col]] <- iconv(df[[col]], to = "UTF-8", sub = "")
+  }
+  
+  df
+}
   
   # Initial fetch + persist to GitHub
   observeEvent(TRUE, {
     snap  <- get_who_port_list()
     hist2 <- update_history_github(snap)   # reads CSV from GH, appends, dedupes, commits back
-    history_rv(normalize_col_names(hist2))  # FIX 1: normalize before storing
+    history_rv(normalize_and_clean(hist2))  # FIX 1: normalize before storing
   }, once = TRUE)
   
   # Manual refresh button
   observeEvent(input$refresh, {
     snap  <- get_who_port_list()
     hist2 <- update_history_github(snap)
-    history_rv(normalize_col_names(hist2))  # FIX 1: normalize before storing
+    history_rv(normalize_and_clean(hist2))  # FIX 1: normalize before storing
   })
   
   # Reactive: Get unique countries
