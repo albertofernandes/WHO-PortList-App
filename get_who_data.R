@@ -59,7 +59,10 @@ get_who_port_list <- function(
   all_lines <- shift_cols(all_lines)
   
   # Normalize column names to match canonical names
-  col_renames <- c("EXTENSION" = "Extension")
+  col_renames <- c(
+    "EXTENSION" = "Extension",
+    "Other.information" = "Other.Information"  # Ensure it uses dot, not space
+  )
   for (old in names(col_renames)) {
     if (old %in% names(all_lines)) {
       names(all_lines)[names(all_lines) == old] <- col_renames[[old]]
@@ -202,21 +205,46 @@ gh_write_csv <- function(data,
 append_who_history <- function(existing = NULL, new_snapshot) {
   cols <- c(.who_content_cols, "Date")
   
-  # 1) If no existing file (first run) or wrong shape, create a 0-row tibble with the expected columns
-  if (is.null(existing) || !all(cols %in% names(existing))) {
+  # DEBUG: Print what we're working with
+  cat("Expected columns:", paste(cols, collapse=", "), "\n")
+  if (!is.null(existing)) {
+    cat("Existing columns:", paste(names(existing), collapse=", "), "\n")
+  }
+  cat("New snapshot columns:", paste(names(new_snapshot), collapse=", "), "\n")
+  
+  # 1) If no existing file (first run), create a 0-row tibble with the expected columns
+  if (is.null(existing)) {
+    cat("Creating new empty history (no existing file)\n")
     empty_cols <- setNames(rep(list(character()), length(cols)), cols)
     existing <- tibble::as_tibble(empty_cols)
   } else {
-    # keep only expected columns (in case the file has extras)
-    existing <- dplyr::select(existing, dplyr::all_of(cols))
+    # CHECK: Do we have the critical columns?
+    missing_critical <- setdiff(cols, names(existing))
+    if (length(missing_critical) > 0) {
+      cat("WARNING: Missing columns in existing file:", paste(missing_critical, collapse=", "), "\n")
+      cat("Will add missing columns instead of resetting everything\n")
+      
+      # Add missing columns to existing data instead of destroying it
+      for (m in missing_critical) {
+        existing[[m]] <- NA_character_
+      }
+      # Reorder to match expected columns
+      existing <- dplyr::select(existing, dplyr::all_of(cols))
+    } else {
+      # keep only expected columns (in case the file has extras)
+      existing <- dplyr::select(existing, dplyr::all_of(cols))
+    }
   }
   
   # 2) Ensure the new snapshot has exactly the expected columns (add missing as NA, drop extras)
   missing_in_new <- setdiff(cols, names(new_snapshot))
   if (length(missing_in_new)) {
+    cat("Adding missing columns to new snapshot:", paste(missing_in_new, collapse=", "), "\n")
     for (m in missing_in_new) new_snapshot[[m]] <- NA_character_
   }
   new_snapshot <- dplyr::select(new_snapshot, dplyr::all_of(cols))
+  
+  # Convert everything to character to avoid type mismatches
   existing <- existing %>%
     dplyr::mutate(dplyr::across(dplyr::all_of(cols), as.character))
   
@@ -224,9 +252,15 @@ append_who_history <- function(existing = NULL, new_snapshot) {
     dplyr::mutate(dplyr::across(dplyr::all_of(cols), as.character))
   
   # 3) Bind + dedupe on all content columns + Date
-  dplyr::bind_rows(existing, new_snapshot) |>
+  cat("Before binding - existing rows:", nrow(existing), ", new rows:", nrow(new_snapshot), "\n")
+  
+  result <- dplyr::bind_rows(existing, new_snapshot) |>
     dplyr::distinct(dplyr::across(dplyr::all_of(cols)), .keep_all = TRUE) |>
     dplyr::select(dplyr::all_of(cols))
+  
+  cat("After deduplication - result rows:", nrow(result), "\n")
+  
+  result
 }
 
 # Public: read existing history, append new snapshot, dedupe (per Date), and write back

@@ -30,7 +30,7 @@ suppressPackageStartupMessages({
   library(tidyr)
 })
 
-#if (file.exists("secrets.R")) source("secrets.R")   # sets env vars
+if (file.exists("secrets.R")) source("secrets.R")   # sets env vars
 source("get_who_data.R")                            # defines get_who_port_list(), etc.
 
 ui <- fluidPage(
