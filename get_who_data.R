@@ -431,6 +431,15 @@ update_history_github <- function(new_snapshot,
     
     combined <- append_who_history(existing, new_snapshot)
     
+    # Safety guard: never write back fewer rows than we already have
+    if (!is.null(existing) && nrow(existing) > 0 && nrow(combined) < nrow(existing)) {
+      warning(sprintf(
+        "Aborting write: combined rows (%d) < existing rows (%d). No data written.",
+        nrow(combined), nrow(existing)
+      ))
+      return(existing)
+    }
+    
     new_sha <- gh_write_csv(
       combined,
       repo           = repo,
@@ -444,17 +453,25 @@ update_history_github <- function(new_snapshot,
     combined
   }
   
-  # Try once; on 409, re-read and try again
+  # Wrap the entire cycle in tryCatch to prevent any error from propagating
   tryCatch(
-    do_update(),
-    error = function(e) {
-      msg <- conditionMessage(e)
-      if (grepl("409", msg)) {
-        warning("GitHub 409 conflict detected; re-reading file and retrying once...")
-        return(do_update())
-      } else {
-        stop(e)
+    # Try once; on 409, re-read and try again
+    tryCatch(
+      do_update(),
+      error = function(e) {
+        msg <- conditionMessage(e)
+        if (grepl("409", msg)) {
+          warning("GitHub 409 conflict detected; re-reading file and retrying once...")
+          return(do_update())
+        } else {
+          stop(e)
+        }
       }
+    ),
+    error = function(e) {
+      warning("update_history_github failed: ", conditionMessage(e),
+              ". Returning existing data unchanged.")
+      tryCatch(gh_read_csv(repo, path, ref = branch), error = function(e2) tibble::tibble())
     }
   )
 }

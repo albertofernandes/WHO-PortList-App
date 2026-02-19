@@ -59,10 +59,7 @@ ui <- fluidPage(
       
       checkboxInput("show_all_dates", "Show all available dates", value = TRUE),
       
-      # Refresh button
-      actionButton("refresh", "Refresh Data"),
-      
-      helpText("Data is fetched live from WHO and parsed locally.")
+      helpText("Data is updated automatically 3x daily by GitHub Actions.")
     ),
     mainPanel(
       # Plot at the top (more important than table)
@@ -77,9 +74,17 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   history_rv <- reactiveVal(tibble::tibble())
   
-  do_initial <- isTRUE(tolower(Sys.getenv("AUTO_REFRESH_ON_START", "true")) == "true")
-  
-  # Helper function to check if a port code is valid and should be displayed
+  # Initial read from GitHub (read-only; data is updated by the cron job)
+  observeEvent(TRUE, {
+    hist2 <- tryCatch(
+      gh_read_csv(),
+      error = function(e) {
+        warning("Could not read who_history.csv from GitHub: ", conditionMessage(e))
+        tibble::tibble()
+      }
+    )
+    history_rv(normalize_and_clean(hist2))
+  }, once = TRUE)
   has_valid_code <- function(code) {
     !is.na(code) & nzchar(as.character(code)) & code != "NA"
   }
@@ -119,20 +124,6 @@ normalize_and_clean <- function(df) {
   
   df
 }
-  
-  # Initial fetch + persist to GitHub
-  observeEvent(TRUE, {
-    snap  <- get_who_port_list()
-    hist2 <- update_history_github(snap)   # reads CSV from GH, appends, dedupes, commits back
-    history_rv(normalize_and_clean(hist2))  # FIX 1: normalize before storing
-  }, once = TRUE)
-  
-  # Manual refresh button
-  observeEvent(input$refresh, {
-    snap  <- get_who_port_list()
-    hist2 <- update_history_github(snap)
-    history_rv(normalize_and_clean(hist2))  # FIX 1: normalize before storing
-  })
   
   # Reactive: Get unique countries
   unique_countries <- reactive({
