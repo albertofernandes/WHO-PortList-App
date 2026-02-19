@@ -22,6 +22,7 @@ suppressPackageStartupMessages({
   library(gh)
   library(readr)
   library(base64enc)
+  library(httr)
 })
 
 # ---- Public function ---------------------------------------------------------
@@ -129,75 +130,219 @@ gh_read_csv <- function(repo = Sys.getenv("GH_REPO"),
   gh_require_env()
   if (!requireNamespace("gh", quietly = TRUE)) stop("Install 'gh'")
   if (!requireNamespace("readr", quietly = TRUE)) stop("Install 'readr'")
-  if (!requireNamespace("base64enc", quietly = TRUE)) stop("Install 'base64enc'")
+  if (!requireNamespace("httr", quietly = TRUE)) stop("Install 'httr'")
   
-  res <- tryCatch(
-    gh::gh("GET /repos/{owner}/{repo}/contents/{path}?ref={ref}",
-           owner = strsplit(repo, "/")[[1]][1],
-           repo  = strsplit(repo, "/")[[1]][2],
-           path  = path,
-           ref   = ref,
-           .token = Sys.getenv("GITHUB_PAT")),
-    error = identity
-  )
+  owner <- strsplit(repo, "/")[[1]][1]
+  repo_name <- strsplit(repo, "/")[[1]][2]
   
-  if (inherits(res, "error")) {
-    # 404 → file doesn't exist yet
-    if (grepl("404", conditionMessage(res))) return(NULL)
-    stop(res)
+  # Use raw.githubusercontent.com to download the file directly (supports large files)
+  raw_url <- sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s", 
+                     owner, repo_name, ref, path)
+  
+  cat("Downloading from:", raw_url, "\n")
+  
+  # Download the file to a temporary file instead of loading into memory
+  temp_file <- tempfile(fileext = ".csv")
+  
+  response <- tryCatch({
+    httr::GET(raw_url, 
+              httr::add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT"))),
+              httr::write_disk(temp_file, overwrite = TRUE))
+  }, error = function(e) {
+    cat("Error downloading file:", conditionMessage(e), "\n")
+    return(NULL)
+  })
+  
+  # Check if successful
+  if (is.null(response)) {
+    cat("Download failed (NULL response)\n")
+    return(NULL)
   }
   
-  raw_csv <- base64enc::base64decode(res$content)
-  df <- readr::read_csv(rawConnection(raw_csv), show_col_types = FALSE)
-  attr(df, "sha") <- res$sha  # needed for updates
+  if (httr::http_error(response)) {
+    status <- httr::status_code(response)
+    if (status == 404) {
+      cat("File not found (404)\n")
+      return(NULL)
+    }
+    stop("Failed to download file from GitHub: HTTP ", status)
+  }
+  
+  # Check if file was written
+  if (!file.exists(temp_file)) {
+    stop("Failed to write temporary file")
+  }
+  
+  file_size <- file.info(temp_file)$size
+  cat("Downloaded", round(file_size / 1024 / 1024, 2), "MB to temp file\n")
+  
+  # Read the CSV from the file with explicit encoding handling
+  cat("Reading CSV...\n")
+  df <- readr::read_csv(temp_file, 
+                        show_col_types = FALSE,
+                        locale = readr::locale(encoding = "UTF-8"))
+  
+  cat("Read", nrow(df), "rows and", ncol(df), "columns\n")
+  
+  # Clean up temp file
+  unlink(temp_file)
+  
+  # Get the file SHA for updates (need a separate API call)
+  # Note: This uses the regular API which works for metadata even on large files
+  cat("Getting file SHA...\n")
+  sha_res <- tryCatch({
+    gh::gh("GET /repos/{owner}/{repo}/contents/{path}",
+           owner = owner,
+           repo = repo_name,
+           path = path,
+           ref = ref,
+           .token = Sys.getenv("GITHUB_PAT"))
+  }, error = function(e) {
+    cat("Warning: Could not get SHA, file might be too large for Contents API\n")
+    return(list(sha = NA))
+  })
+  
+  attr(df, "sha") <- sha_res$sha
   df
 }
 
-# Write CSV to GitHub (create or update). Returns new SHA.
+# Write CSV to GitHub (handles files of any size using Git Blob API)
 gh_write_csv <- function(data,
                          repo = Sys.getenv("GH_REPO"),
                          path = Sys.getenv("GH_PATH"),
                          branch = Sys.getenv("GH_BRANCH", unset = "main"),
                          commit_message = "Update who_history.csv",
-                         prev_sha = NULL) {
-  gh_require_env()
+                         prev_sha = NULL) {  # prev_sha is ignored but kept for compatibility
+  
   if (!requireNamespace("gh", quietly = TRUE)) stop("Install 'gh'")
   if (!requireNamespace("readr", quietly = TRUE)) stop("Install 'readr'")
   if (!requireNamespace("base64enc", quietly = TRUE)) stop("Install 'base64enc'")
   
-  # normalize commit_message to single non-empty string
-  if (length(commit_message) == 0L || all(is.na(commit_message))) {
-    commit_message <- "Update who_history.csv"
-  } else {
-    commit_message <- paste0(commit_message[!is.na(commit_message)], collapse = "; ")
-  }
-  
-  tf <- tempfile(fileext = ".csv")
-  readr::write_csv(data, tf)
-  b64 <- base64enc::base64encode(tf)
+  gh_require_env()
   
   owner <- strsplit(repo, "/")[[1]][1]
-  repoN <- strsplit(repo, "/")[[1]][2]
+  repo_name <- strsplit(repo, "/")[[1]][2]
   
-  body <- list(
-    message = commit_message,
-    content = b64,
-    branch  = branch
-  )
-  if (!is.null(prev_sha)) {
-    body$sha <- prev_sha
+  cat("=== WRITING TO GITHUB ===\n")
+  cat("Repo:", repo, "\n")
+  cat("Path:", path, "\n")
+  cat("Rows:", nrow(data), "\n")
+  
+  # 1. Write CSV to temp file
+  tf <- tempfile(fileext = ".csv")
+  readr::write_csv(data, tf)
+  file_size <- file.info(tf)$size
+  cat("File size:", round(file_size / 1024 / 1024, 2), "MB\n")
+  
+  # 2. Read as base64
+  b64 <- base64enc::base64encode(tf)
+  
+  # Retry logic for handling concurrent updates
+  max_retries <- 3
+  retry_count <- 0
+  
+  while (retry_count < max_retries) {
+    tryCatch({
+      # 3. Get the current branch reference (FRESH each retry)
+      cat("Getting branch reference (attempt", retry_count + 1, ")...\n")
+      ref_res <- gh::gh("GET /repos/{owner}/{repo}/git/ref/heads/{branch}",
+                        owner = owner,
+                        repo = repo_name,
+                        branch = branch,
+                        .token = Sys.getenv("GITHUB_PAT"))
+      
+      current_sha <- ref_res$object$sha
+      cat("Current commit SHA:", current_sha, "\n")
+      
+      # 4. Get the current commit
+      cat("Getting current commit...\n")
+      commit_res <- gh::gh("GET /repos/{owner}/{repo}/git/commits/{sha}",
+                           owner = owner,
+                           repo = repo_name,
+                           sha = current_sha,
+                           .token = Sys.getenv("GITHUB_PAT"))
+      
+      tree_sha <- commit_res$tree$sha
+      
+      # 5. Create a blob for the file content
+      cat("Creating blob...\n")
+      blob_res <- gh::gh("POST /repos/{owner}/{repo}/git/blobs",
+                         owner = owner,
+                         repo = repo_name,
+                         content = b64,
+                         encoding = "base64",
+                         .token = Sys.getenv("GITHUB_PAT"))
+      
+      blob_sha <- blob_res$sha
+      cat("Blob SHA:", blob_sha, "\n")
+      
+      # 6. Create a new tree with the updated file
+      cat("Creating tree...\n")
+      tree_res <- gh::gh("POST /repos/{owner}/{repo}/git/trees",
+                         owner = owner,
+                         repo = repo_name,
+                         base_tree = tree_sha,
+                         tree = list(
+                           list(
+                             path = path,
+                             mode = "100644",
+                             type = "blob",
+                             sha = blob_sha
+                           )
+                         ),
+                         .token = Sys.getenv("GITHUB_PAT"))
+      
+      new_tree_sha <- tree_res$sha
+      
+      # 7. Create a new commit
+      cat("Creating commit...\n")
+      new_commit_res <- gh::gh("POST /repos/{owner}/{repo}/git/commits",
+                               owner = owner,
+                               repo = repo_name,
+                               message = commit_message,
+                               tree = new_tree_sha,
+                               parents = list(current_sha),
+                               .token = Sys.getenv("GITHUB_PAT"))
+      
+      new_commit_sha <- new_commit_res$sha
+      cat("New commit SHA:", new_commit_sha, "\n")
+      
+      # 8. Update the branch reference
+      cat("Updating branch reference...\n")
+      gh::gh("PATCH /repos/{owner}/{repo}/git/refs/heads/{branch}",
+             owner = owner,
+             repo = repo_name,
+             branch = branch,
+             sha = new_commit_sha,
+             .token = Sys.getenv("GITHUB_PAT"))
+      
+      cat("✓ Successfully committed to GitHub!\n")
+      cat("=========================\n")
+      
+      # Success! Return the new commit SHA
+      return(new_commit_sha)
+      
+    }, error = function(e) {
+      error_msg <- conditionMessage(e)
+      
+      # Check if it's a fast-forward error
+      if (grepl("422|fast forward", error_msg, ignore.case = TRUE)) {
+        retry_count <<- retry_count + 1
+        if (retry_count < max_retries) {
+          cat("⚠ Conflict detected, retrying (", retry_count, "/", max_retries, ")...\n")
+          Sys.sleep(1)  # Wait 1 second before retrying
+          return(NULL)  # Continue the while loop
+        } else {
+          stop("Failed to commit after ", max_retries, " retries due to conflicts")
+        }
+      } else {
+        # Different error, re-throw it
+        stop(e)
+      }
+    })
   }
   
-  res <- gh::gh(
-    "PUT /repos/{owner}/{repo}/contents/{path}",
-    owner      = owner,
-    repo       = repoN,
-    path       = path,
-    .token     = Sys.getenv("GITHUB_PAT"),
-    .send_json = TRUE,
-    !!!body
-  )
-  res$content$sha
+  stop("Should not reach here")
 }
 
 .who_content_cols <- c("Country","Name","Code","SSCC","SSCEC","Extension","Other.Information")
