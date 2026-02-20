@@ -23,7 +23,6 @@ suppressPackageStartupMessages({
   library(readr)
   library(base64enc)
   library(httr2)
-  library(lubridate)
 })
 
 # ---- Public function ---------------------------------------------------------
