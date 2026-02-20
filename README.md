@@ -4,7 +4,7 @@
 
 ### USP · Public Health Unit, Local Health Unit of Matosinhos  
 **Contact:** albertojose.fernandes@ulsm.min-saude.pt  
-**Version:** v1.0 · **Date:** 28/10/2025  
+**Version:** v1.1 · **Date:** 20/02/2026  
 
 ---
 
@@ -14,15 +14,13 @@ This project parses the **World Health Organization (WHO) International Health R
 
 The **Shiny application** allows interactive exploration of the dataset, while a **GitHub Actions cron job** automatically fetches and updates the data three times per day — ensuring that your published data stays up to date without manual intervention.
 
-No Java is required — all parsing is done in pure R using the `pdftools` package.
-
 ---
 
 **Key Features**
 
 - 🔎 **Live parsing** of WHO’s official *IHR Ports List* PDF  
 - 🗃️ **Clean tabular output** — columns:  
-  `Name`, `Code`, `SSCC`, `SSCEC`, `Extension`, `Other information`, `Date`
+  `Country`, `Name`, `Code`, `SSCC`, `SSCEC`, `Extension`, `Other information`, `Date`
 - 🕐 **Automated updates** 3× per day via GitHub Actions  
 - 📈 **Interactive dashboard** in Shiny  
 - 💾 **Versioned history** — each run stores a timestamped snapshot and maintains a rolling `who_history.csv`
@@ -127,8 +125,6 @@ To test or run the update manually:
     Rscript cron/job_fetch_who.R
 
 **Notes**
-
-Parsing uses pdftools + regex/string cleaning (no Java).
 
 The cron workflow automatically creates missing CSVs on the first run.
 
