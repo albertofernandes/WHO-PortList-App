@@ -54,13 +54,33 @@ ui <- fluidPage(
                      multiple = FALSE,
                      options = list(placeholder = 'Search by name or code')),
       
-      # Date range filter
+      # Date range filter — default to today
       dateRangeInput("date_range", "Date Range:",
-                     start = NULL, end = NULL),
+                     start = Sys.Date(), end = Sys.Date()),
       
       checkboxInput("show_all_dates", "Show all available dates", value = TRUE),
       
-      helpText("Data is updated automatically 3x daily by GitHub Actions.")
+      helpText("Data is updated automatically 3x daily by GitHub Actions."),
+      # Metadata panel
+      tags$hr(),
+      wellPanel(
+        style = "font-size: 11px; padding: 10px;",
+        h5("About", style = "margin-top: 0;"),
+        tags$p(tags$b("Source: "),
+               tags$a("WHO IHR Ports List",
+                      href = "https://extranet.who.int/ihr/poedata/public/php/csvversion.php?lang=en&POEpage=0",
+                      target = "_blank")),
+        tags$p(tags$b("Author: "), "USP — Public Health Unit, ULS Matosinhos"),
+        tags$p(tags$b("Maintainer: "), "Alberto José Fernandes"),
+        tags$p(tags$b("Contact: "),
+               tags$a("albertojose.fernandes@ulsm.min-saude.pt",
+                      href = "mailto:albertojose.fernandes@ulsm.min-saude.pt")),
+        tags$p(tags$b("Version: "), "v1.1 · February 2026"),
+        tags$p(tags$b("Repository: "),
+               tags$a("GitHub",
+                      href = "https://github.com/albertofernandes/WHO-PortList-App",
+                      target = "_blank"))
+      )
     ),
     mainPanel(
       # Three plots side by side (one per criterion)
@@ -95,40 +115,53 @@ server <- function(input, output, session) {
   }
   
   # Helper to normalize and clean data
-normalize_and_clean <- function(df) {
-  # Normalize column names
-  if ("EXTENSION" %in% names(df) && !("Extension" %in% names(df))) {
-    names(df)[names(df) == "EXTENSION"] <- "Extension"
+  normalize_and_clean <- function(df) {
+    # Normalize column names
+    if ("EXTENSION" %in% names(df) && !("Extension" %in% names(df))) {
+      names(df)[names(df) == "EXTENSION"] <- "Extension"
+    }
+    
+    # Helper: safely ensure a character vector is valid UTF-8 without dropping characters
+    safe_utf8 <- function(x) {
+      x <- as.character(x)
+      # Try to convert from UTF-8 first (no-op if already valid UTF-8)
+      converted <- iconv(x, from = "UTF-8", to = "UTF-8")
+      # Wherever the UTF-8 conversion failed (NA), the text is likely Latin-1
+      needs_latin1 <- is.na(converted) & !is.na(x)
+      if (any(needs_latin1)) {
+        converted[needs_latin1] <- iconv(x[needs_latin1], from = "latin1", to = "UTF-8")
+      }
+      # If both failed, keep the original as-is
+      still_na <- is.na(converted) & !is.na(x)
+      if (any(still_na)) {
+        converted[still_na] <- x[still_na]
+      }
+      converted
+    }
+    
+    # Clean Date column - handle encoding issues and invalid dates
+    if ("Date" %in% names(df)) {
+      df$Date <- tryCatch({
+        date_char <- safe_utf8(df$Date)
+        
+        # Replace dates that are too long or empty with today's date
+        date_char <- ifelse(is.na(date_char) | nchar(date_char) > 10 | nchar(date_char) == 0,
+                            format(Sys.Date(), "%d/%m/%Y"),
+                            date_char)
+        date_char
+      }, error = function(e) {
+        rep(format(Sys.Date(), "%d/%m/%Y"), nrow(df))
+      })
+    }
+    
+    # Clean all character columns - preserve special characters
+    char_cols <- names(df)[sapply(df, is.character)]
+    for (col in char_cols) {
+      df[[col]] <- safe_utf8(df[[col]])
+    }
+    
+    df
   }
-  
-  # Clean Date column - handle encoding issues and invalid dates
-  if ("Date" %in% names(df)) {
-    # First, ensure all Date values are valid strings (not NA, not too long)
-    df$Date <- tryCatch({
-      # Convert to character and handle encoding issues
-      date_char <- as.character(df$Date)
-      date_char <- iconv(date_char, to = "UTF-8", sub = "")  # Remove invalid characters
-      
-      # Replace dates that are too long or empty with today's date
-      date_char <- ifelse(is.na(date_char) | nchar(date_char) > 10 | nchar(date_char) == 0,
-                          format(Sys.Date(), "%d/%m/%Y"),
-                          date_char)
-      
-      date_char
-    }, error = function(e) {
-      # If anything fails, just return today's date for all
-      rep(format(Sys.Date(), "%d/%m/%Y"), nrow(df))
-    })
-  }
-  
-  # Clean all character columns for encoding issues
-  char_cols <- names(df)[sapply(df, is.character)]
-  for (col in char_cols) {
-    df[[col]] <- iconv(df[[col]], to = "UTF-8", sub = "")
-  }
-  
-  df
-}
   
   # Reactive: Get unique countries
   unique_countries <- reactive({
@@ -137,13 +170,14 @@ normalize_and_clean <- function(df) {
     sort(unique(df$Country))
   })
   
-  # Update country choices when data changes
+  # Update country choices when data changes — default to Portugal
   observeEvent(history_rv(), {
     req(nrow(history_rv()) > 0)
     countries <- unique_countries()
+    default_country <- if ("Portugal" %in% countries) "Portugal" else ""
     updateSelectInput(session, "country", 
                       choices = c("All Countries" = "", countries),
-                      selected = "")
+                      selected = default_country)
   })
   
   # Reactive: Get ports filtered by country
@@ -168,7 +202,6 @@ normalize_and_clean <- function(df) {
   observeEvent(ports_by_country(), {
     ports <- ports_by_country()
     if (nrow(ports) > 0) {
-      # Create named vector: labels show "Name (Code) - Country", values are Name
       port_choices <- setNames(
         ports$Name,
         paste0(ports$Name, 
@@ -179,9 +212,31 @@ normalize_and_clean <- function(df) {
       updateSelectizeInput(session, "port_select", 
                            choices = c("Select a port" = "", port_choices),
                            selected = "",
-                           server = TRUE)  # FIX 2: server-side selectize for performance
+                           server = TRUE)
     }
   })
+  
+  # One-time: set default country (Portugal) and port (PTLEI) after data loads
+  observe({
+    df <- history_rv()
+    req(nrow(df) > 0)
+    
+    countries <- sort(unique(df$Country))
+    if ("Portugal" %in% countries) {
+      updateSelectInput(session, "country", selected = "Portugal")
+      
+      # Find the Name that corresponds to code PTLEI (avoids encoding issues)
+      leixoes_name <- df %>%
+        dplyr::filter(Code == "PTLEI") %>%
+        dplyr::pull(Name) %>%
+        unique()
+      
+      if (length(leixoes_name) > 0) {
+        # Pick the first one if there are duplicates
+        updateSelectizeInput(session, "port_select", selected = leixoes_name[1])
+      }
+    }
+  }) |> bindEvent(history_rv(), once = TRUE)
   
   # Update date range when data changes
   observeEvent(history_rv(), {
