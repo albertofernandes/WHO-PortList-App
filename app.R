@@ -197,6 +197,12 @@ server <- function(input, output, session) {
     ports
   })
   
+  # Flag: should we set default port on next port list update?
+  set_default_port <- reactiveVal(TRUE)
+  
+  # Track the last country to avoid re-firing on duplicate updates
+  last_country <- reactiveVal(NULL)
+  
   # Update port choices when country changes
   observeEvent(ports_by_country(), {
     ports <- ports_by_country()
@@ -208,34 +214,32 @@ server <- function(input, output, session) {
                       paste0(" (", ports$Code, ")"), ""),
                " - ", ports$Country)
       )
+      
+      # Determine the current country
+      current_country <- input$country
+      
+      # On first load, default to PTLEI (Leixões)
+      default_port <- ""
+      if (set_default_port()) {
+        ptlei <- ports %>% dplyr::filter(Code == "PTLEI")
+        if (nrow(ptlei) > 0) {
+          default_port <- ptlei$Name[1]
+        }
+        set_default_port(FALSE)
+        last_country(current_country)
+      } else if (identical(current_country, last_country())) {
+        # Same country fired again (duplicate invalidation) — keep current selection
+        return()
+      }
+      
+      last_country(current_country)
+      
       updateSelectizeInput(session, "port_select", 
                            choices = c("Select a port" = "", port_choices),
-                           selected = "",
+                           selected = default_port,
                            server = TRUE)
     }
   })
-  
-  # One-time: set default country (Portugal) and port (PTLEI) after data loads
-  observe({
-    df <- history_rv()
-    req(nrow(df) > 0)
-    
-    countries <- sort(unique(df$Country))
-    if ("Portugal" %in% countries) {
-      updateSelectInput(session, "country", selected = "Portugal")
-      
-      # Find the Name that corresponds to code PTLEI (avoids encoding issues)
-      leixoes_name <- df %>%
-        dplyr::filter(Code == "PTLEI") %>%
-        dplyr::pull(Name) %>%
-        unique()
-      
-      if (length(leixoes_name) > 0) {
-        # Pick the first one if there are duplicates
-        updateSelectizeInput(session, "port_select", selected = leixoes_name[1])
-      }
-    }
-  }) |> bindEvent(history_rv(), once = TRUE)
   
   # Update date range when data changes
   observeEvent(history_rv(), {
@@ -245,7 +249,7 @@ server <- function(input, output, session) {
       valid_dates <- dates[!is.na(dates)]
       if (length(valid_dates) > 0) {
         updateDateRangeInput(session, "date_range",
-                             start = min(valid_dates),
+                             start = Sys.Date(),
                              end = max(valid_dates))
       }
     }
