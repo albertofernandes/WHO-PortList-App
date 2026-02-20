@@ -302,7 +302,7 @@ gh_write_csv <- function(data,
       
       # Success! Return the new commit SHA
       return(new_commit_sha)
-      
+    })    
   #   }, error = function(e) {
   #     error_msg <- conditionMessage(e)
   #     
@@ -320,10 +320,11 @@ gh_write_csv <- function(data,
   #       # Different error, re-throw it
   #       stop(e)
   #     }
-     })
+  #   })
   # }
   # 
   # stop("Should not reach here")
+  }
 }
 
 .who_content_cols <- c("Country","Name","Code","SSCC","SSCEC","Extension","Other.Information")
@@ -456,5 +457,4 @@ update_history_github <- function(new_snapshot,
   #   }
   # )
 
-  }
-# -----------------------------------------------------------------------------
+}
