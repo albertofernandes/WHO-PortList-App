@@ -145,9 +145,10 @@ gh_read_csv <- function(repo = Sys.getenv("GH_REPO"),
   temp_file <- tempfile(fileext = ".csv")
   
   response <- tryCatch({
-    httr2::GET(raw_url, 
-              httr2::add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT"))),
-              httr2::write_disk(temp_file, overwrite = TRUE))
+    httr2::request(raw_url) |>
+      httr2::req_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT"))) |>
+      httr2::req_error(is_error = function(resp) FALSE) |>
+      httr2::req_perform(path = temp_file)
   }, error = function(e) {
     cat("Error downloading file:", conditionMessage(e), "\n")
     return(NULL)
@@ -159,12 +160,12 @@ gh_read_csv <- function(repo = Sys.getenv("GH_REPO"),
     return(NULL)
   }
   
-  if (httr2::http_error(response)) {
-    status <- httr2::status_code(response)
-    if (status == 404) {
-      cat("File not found (404)\n")
-      return(NULL)
-    }
+  status <- httr2::resp_status(response)
+  if (status == 404) {
+    cat("File not found (404)\n")
+    return(NULL)
+  }
+  if (status >= 400) {
     stop("Failed to download file from GitHub: HTTP ", status)
   }
   
