@@ -28,6 +28,7 @@ suppressPackageStartupMessages({
   library(stringr)
   library(purrr)
   library(tidyr)
+  library(lubridate)
 })
 
 if (file.exists("secrets.R")) source("secrets.R")   # sets env vars
@@ -62,8 +63,12 @@ ui <- fluidPage(
       helpText("Data is updated automatically 3x daily by GitHub Actions.")
     ),
     mainPanel(
-      # Plot at the top (more important than table)
-      plotOutput("status_plot", height = 420),
+      # Three plots side by side (one per criterion)
+      fluidRow(
+        column(4, plotOutput("plot_sscc",      height = 350)),
+        column(4, plotOutput("plot_sscec",     height = 350)),
+        column(4, plotOutput("plot_extension", height = 350))
+      ),
       tags$hr(),
       # Table below, showing only selected port's data
       DT::DTOutput("tbl")
@@ -318,17 +323,23 @@ normalize_and_clean <- function(df) {
       dplyr::filter(!is.na(Value))
   })
   
-  output$status_plot <- renderPlot({
+  # Filter to last 6 months
+  series_last_6m <- reactive({
     df <- series_for_plot()
     req(nrow(df) > 0)
+    cutoff <- Sys.Date() %m-% months(6)
+    df %>% dplyr::filter(Date >= cutoff)
+  })
+  
+  # Helper: build one criterion plot
+  make_criterion_plot <- function(df, criterion, line_color) {
+    df_c <- df %>% dplyr::filter(Criterion == criterion)
+    req(nrow(df_c) > 0)
     
-    ggplot2::ggplot(df, ggplot2::aes(x = Date, y = Value, color = Criterion, group = Criterion)) +
-      ggplot2::geom_line(na.rm = TRUE) +
-      ggplot2::geom_point(na.rm = TRUE) +
-      ggplot2::scale_x_date(
-        limits = range(df$Date, na.rm = TRUE),
-        date_labels = "%b %Y"
-      ) +
+    ggplot2::ggplot(df_c, ggplot2::aes(x = Date, y = Value)) +
+      ggplot2::geom_line(color = line_color, linewidth = 0.8, na.rm = TRUE) +
+      ggplot2::geom_point(color = line_color, size = 2, na.rm = TRUE) +
+      ggplot2::scale_x_date(date_labels = "%b %Y") +
       ggplot2::scale_y_continuous(
         breaks = c(0, 1),
         labels = c("No [ ]", "Yes [x]"),
@@ -336,12 +347,24 @@ normalize_and_clean <- function(df) {
       ) +
       ggplot2::labs(
         x = NULL, y = NULL,
-        title = paste0("Status over time — ", unique(df$Name)),
-        subtitle = "Three lines: SSCC, SSCEC, Extension"
+        title = criterion,
+        subtitle = unique(df_c$Name)
       ) +
-      ggplot2::theme_minimal(base_size = 12) +
-      ggplot2::theme(legend.position = "bottom")
+      ggplot2::theme_minimal(base_size = 11)
+  }
+  
+  output$plot_sscc <- renderPlot({
+    make_criterion_plot(series_last_6m(), "SSCC", "steelblue")
   })
+  
+  output$plot_sscec <- renderPlot({
+    make_criterion_plot(series_last_6m(), "SSCEC", "tomato")
+  })
+  
+  output$plot_extension <- renderPlot({
+    make_criterion_plot(series_last_6m(), "Extension", "forestgreen")
+  })
+
   
   # FIX 3: Table only renders after a port is selected (via filtered_data's req())
   output$tbl <- renderDT({
