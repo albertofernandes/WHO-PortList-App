@@ -130,7 +130,7 @@ gh_read_csv <- function(repo = Sys.getenv("GH_REPO"),
   gh_require_env()
   if (!requireNamespace("gh", quietly = TRUE)) stop("Install 'gh'")
   if (!requireNamespace("readr", quietly = TRUE)) stop("Install 'readr'")
-  if (!requireNamespace("httr", quietly = TRUE)) stop("Install 'httr'")
+  if (!requireNamespace("httr2", quietly = TRUE)) stop("Install 'httr2'")
   
   owner <- strsplit(repo, "/")[[1]][1]
   repo_name <- strsplit(repo, "/")[[1]][2]
@@ -145,9 +145,9 @@ gh_read_csv <- function(repo = Sys.getenv("GH_REPO"),
   temp_file <- tempfile(fileext = ".csv")
   
   response <- tryCatch({
-    httr::GET(raw_url, 
-              httr::add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT"))),
-              httr::write_disk(temp_file, overwrite = TRUE))
+    httr2::GET(raw_url, 
+              httr2::add_headers(Authorization = paste("token", Sys.getenv("GITHUB_PAT"))),
+              httr2::write_disk(temp_file, overwrite = TRUE))
   }, error = function(e) {
     cat("Error downloading file:", conditionMessage(e), "\n")
     return(NULL)
@@ -159,8 +159,8 @@ gh_read_csv <- function(repo = Sys.getenv("GH_REPO"),
     return(NULL)
   }
   
-  if (httr::http_error(response)) {
-    status <- httr::status_code(response)
+  if (httr2::http_error(response)) {
+    status <- httr2::status_code(response)
     if (status == 404) {
       cat("File not found (404)\n")
       return(NULL)
