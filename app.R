@@ -28,7 +28,6 @@ suppressPackageStartupMessages({
   library(stringr)
   library(purrr)
   library(tidyr)
-  library(lubridate)
 })
 
 if (file.exists("secrets.R")) source("secrets.R")   # sets env vars
@@ -382,7 +381,7 @@ server <- function(input, output, session) {
   series_last_6m <- reactive({
     df <- series_for_plot()
     req(nrow(df) > 0)
-    cutoff <- Sys.Date() %m-% months(6)
+    cutoff <- seq(Sys.Date(), length = 2, by = "-6 months")[2]
     df %>% dplyr::filter(Date >= cutoff)
   })
   
