@@ -22,7 +22,7 @@ suppressPackageStartupMessages({
   library(gh)
   library(readr)
   library(base64enc)
-  library(httr)
+  library(httr2)
 })
 
 # ---- Public function ---------------------------------------------------------
