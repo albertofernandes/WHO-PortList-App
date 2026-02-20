@@ -303,27 +303,27 @@ gh_write_csv <- function(data,
       # Success! Return the new commit SHA
       return(new_commit_sha)
       
-    }, error = function(e) {
-      error_msg <- conditionMessage(e)
-      
-      # Check if it's a fast-forward error
-      if (grepl("422|fast forward", error_msg, ignore.case = TRUE)) {
-        retry_count <<- retry_count + 1
-        if (retry_count < max_retries) {
-          cat("⚠ Conflict detected, retrying (", retry_count, "/", max_retries, ")...\n")
-          Sys.sleep(1)  # Wait 1 second before retrying
-          return(NULL)  # Continue the while loop
-        } else {
-          stop("Failed to commit after ", max_retries, " retries due to conflicts")
-        }
-      } else {
-        # Different error, re-throw it
-        stop(e)
-      }
-    })
-  }
-  
-  stop("Should not reach here")
+  #   }, error = function(e) {
+  #     error_msg <- conditionMessage(e)
+  #     
+  #     # Check if it's a fast-forward error
+  #     if (grepl("422|fast forward", error_msg, ignore.case = TRUE)) {
+  #       retry_count <<- retry_count + 1
+  #       if (retry_count < max_retries) {
+  #         cat("⚠ Conflict detected, retrying (", retry_count, "/", max_retries, ")...\n")
+  #         Sys.sleep(1)  # Wait 1 second before retrying
+  #         return(NULL)  # Continue the while loop
+  #       } else {
+  #         stop("Failed to commit after ", max_retries, " retries due to conflicts")
+  #       }
+  #     } else {
+  #       # Different error, re-throw it
+  #       stop(e)
+  #     }
+     })
+  # }
+  # 
+  # stop("Should not reach here")
 }
 
 .who_content_cols <- c("Country","Name","Code","SSCC","SSCEC","Extension","Other.Information")
