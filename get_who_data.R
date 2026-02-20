@@ -23,6 +23,7 @@ suppressPackageStartupMessages({
   library(readr)
   library(base64enc)
   library(httr2)
+  library(lubridate)
 })
 
 # ---- Public function ---------------------------------------------------------
@@ -139,8 +140,6 @@ gh_read_csv <- function(repo = Sys.getenv("GH_REPO"),
   raw_url <- sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s", 
                      owner, repo_name, ref, path)
   
-  cat("Downloading from:", raw_url, "\n")
-  
   # Download the file to a temporary file instead of loading into memory
   temp_file <- tempfile(fileext = ".csv")
   
@@ -150,7 +149,6 @@ gh_read_csv <- function(repo = Sys.getenv("GH_REPO"),
       httr2::req_error(is_error = function(resp) FALSE) |>
       httr2::req_perform(path = temp_file)
   }, error = function(e) {
-    cat("Error downloading file:", conditionMessage(e), "\n")
     return(NULL)
   })
   
@@ -224,11 +222,6 @@ gh_write_csv <- function(data,
   owner <- strsplit(repo, "/")[[1]][1]
   repo_name <- strsplit(repo, "/")[[1]][2]
   
-  cat("=== WRITING TO GITHUB ===\n")
-  cat("Repo:", repo, "\n")
-  cat("Path:", path, "\n")
-  cat("Rows:", nrow(data), "\n")
-  
   # 1. Write CSV to temp file
   tf <- tempfile(fileext = ".csv")
   readr::write_csv(data, tf)
@@ -245,7 +238,6 @@ gh_write_csv <- function(data,
   while (retry_count < max_retries) {
     tryCatch({
       # 3. Get the current branch reference (FRESH each retry)
-      cat("Getting branch reference (attempt", retry_count + 1, ")...\n")
       ref_res <- gh::gh("GET /repos/{owner}/{repo}/git/ref/heads/{branch}",
                         owner = owner,
                         repo = repo_name,
@@ -253,10 +245,8 @@ gh_write_csv <- function(data,
                         .token = Sys.getenv("GITHUB_PAT"))
       
       current_sha <- ref_res$object$sha
-      cat("Current commit SHA:", current_sha, "\n")
       
       # 4. Get the current commit
-      cat("Getting current commit...\n")
       commit_res <- gh::gh("GET /repos/{owner}/{repo}/git/commits/{sha}",
                            owner = owner,
                            repo = repo_name,
@@ -266,7 +256,6 @@ gh_write_csv <- function(data,
       tree_sha <- commit_res$tree$sha
       
       # 5. Create a blob for the file content
-      cat("Creating blob...\n")
       blob_res <- gh::gh("POST /repos/{owner}/{repo}/git/blobs",
                          owner = owner,
                          repo = repo_name,
@@ -275,10 +264,8 @@ gh_write_csv <- function(data,
                          .token = Sys.getenv("GITHUB_PAT"))
       
       blob_sha <- blob_res$sha
-      cat("Blob SHA:", blob_sha, "\n")
       
       # 6. Create a new tree with the updated file
-      cat("Creating tree...\n")
       tree_res <- gh::gh("POST /repos/{owner}/{repo}/git/trees",
                          owner = owner,
                          repo = repo_name,
@@ -296,7 +283,6 @@ gh_write_csv <- function(data,
       new_tree_sha <- tree_res$sha
       
       # 7. Create a new commit
-      cat("Creating commit...\n")
       new_commit_res <- gh::gh("POST /repos/{owner}/{repo}/git/commits",
                                owner = owner,
                                repo = repo_name,
@@ -306,19 +292,14 @@ gh_write_csv <- function(data,
                                .token = Sys.getenv("GITHUB_PAT"))
       
       new_commit_sha <- new_commit_res$sha
-      cat("New commit SHA:", new_commit_sha, "\n")
       
       # 8. Update the branch reference
-      cat("Updating branch reference...\n")
       gh::gh("PATCH /repos/{owner}/{repo}/git/refs/heads/{branch}",
              owner = owner,
              repo = repo_name,
              branch = branch,
              sha = new_commit_sha,
              .token = Sys.getenv("GITHUB_PAT"))
-      
-      cat("✓ Successfully committed to GitHub!\n")
-      cat("=========================\n")
       
       # Success! Return the new commit SHA
       return(new_commit_sha)
