@@ -413,13 +413,13 @@ update_history_github <- function(new_snapshot,
     combined <- append_who_history(existing, new_snapshot)
     
     # Safety guard: never write back fewer rows than we already have
-    if (!is.null(existing) && nrow(existing) > 0 && nrow(combined) < nrow(existing)) {
-      warning(sprintf(
-        "Aborting write: combined rows (%d) < existing rows (%d). No data written.",
-        nrow(combined), nrow(existing)
-      ))
-      return(existing)
-    }
+    # if (!is.null(existing) && nrow(existing) > 0 && nrow(combined) < nrow(existing)) {
+    #   warning(sprintf(
+    #     "Aborting write: combined rows (%d) < existing rows (%d). No data written.",
+    #     nrow(combined), nrow(existing)
+    #   ))
+    #   return(existing)
+    # }
     
     new_sha <- gh_write_csv(
       combined,
