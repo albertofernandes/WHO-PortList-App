@@ -435,25 +435,26 @@ update_history_github <- function(new_snapshot,
   }
   
   # Wrap the entire cycle in tryCatch to prevent any error from propagating
-  tryCatch(
-    # Try once; on 409, re-read and try again
-    tryCatch(
-      do_update(),
-      error = function(e) {
-        msg <- conditionMessage(e)
-        if (grepl("409", msg)) {
-          warning("GitHub 409 conflict detected; re-reading file and retrying once...")
-          return(do_update())
-        } else {
-          stop(e)
-        }
-      }
-    ),
-    error = function(e) {
-      warning("update_history_github failed: ", conditionMessage(e),
-              ". Returning existing data unchanged.")
-      tryCatch(gh_read_csv(repo, path, ref = branch), error = function(e2) tibble::tibble())
-    }
-  )
-}
+  # tryCatch(
+  #   # Try once; on 409, re-read and try again
+  #   tryCatch(
+  #     do_update(),
+  #     error = function(e) {
+  #       msg <- conditionMessage(e)
+  #       if (grepl("409", msg)) {
+  #         warning("GitHub 409 conflict detected; re-reading file and retrying once...")
+  #         return(do_update())
+  #       } else {
+  #         stop(e)
+  #       }
+  #     }
+  #   ),
+  #   error = function(e) {
+  #     warning("update_history_github failed: ", conditionMessage(e),
+  #             ". Returning existing data unchanged.")
+  #     tryCatch(gh_read_csv(repo, path, ref = branch), error = function(e2) tibble::tibble())
+  #   }
+  # )
+
+  }
 # -----------------------------------------------------------------------------
