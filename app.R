@@ -281,14 +281,20 @@ normalize_and_clean <- function(df) {
     }
     
     mark_to_value <- function(m) {
+      # Handle numeric input directly
+      if (is.numeric(m)) {
+        return(dplyr::case_when(m == 1 ~ 1L, m == 0 ~ 0L, TRUE ~ NA_integer_))
+      }
       m <- normalize_mark(m)
       dplyr::case_when(
         # YES variants first
         stringr::str_detect(m, "[\u2611\u2713\u2714]") ~ 1L,                # ☑ ✓ ✔
         stringr::str_detect(m, "\\[\\s*[xX]\\s*\\]")   ~ 1L,                # [x], [ x ], [X]
+        stringr::str_to_lower(m) %in% c("yes", "y", "true", "1") ~ 1L,      # Yes, Y, TRUE, 1
         # NO variants
         stringr::str_detect(m, "[\u2610]")             ~ 0L,                # ☐
         stringr::str_detect(m, "\\[\\s*\\]")           ~ 0L,                # [ ], [] (with/without spaces)
+        stringr::str_to_lower(m) %in% c("no", "n", "false", "0") ~ 0L,      # No, N, FALSE, 0
         TRUE                                           ~ NA_integer_
       )
     }
@@ -308,17 +314,8 @@ normalize_and_clean <- function(df) {
         Criterion = factor(Criterion, levels = c("SSCC","SSCEC","Extension"))
       )
     
-    # daily grid so x-axis has all days
-    rng <- range(df_full$Date, na.rm = TRUE)
-    all_days <- seq(from = rng[1], to = rng[2], by = "day")
-    
     df_full %>%
-      tidyr::complete(
-        Date = all_days,
-        Criterion,
-        fill = list(Value = NA_integer_, Mark = NA_character_, Name = port)
-      ) %>%
-      dplyr::mutate(Name = port)
+      dplyr::filter(!is.na(Value))
   })
   
   output$status_plot <- renderPlot({
@@ -328,6 +325,10 @@ normalize_and_clean <- function(df) {
     ggplot2::ggplot(df, ggplot2::aes(x = Date, y = Value, color = Criterion, group = Criterion)) +
       ggplot2::geom_line(na.rm = TRUE) +
       ggplot2::geom_point(na.rm = TRUE) +
+      ggplot2::scale_x_date(
+        limits = range(df$Date, na.rm = TRUE),
+        date_labels = "%b %Y"
+      ) +
       ggplot2::scale_y_continuous(
         breaks = c(0, 1),
         labels = c("No [ ]", "Yes [x]"),
