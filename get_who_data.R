@@ -355,6 +355,7 @@ gh_write_csv <- function(data,
 .who_content_cols <- c("Country","Name","Code","SSCC","SSCEC","Extension","Other.Information")
 
 append_who_history <- function(existing = NULL, new_snapshot) {
+  
   cols <- c(.who_content_cols, "Date")
   
   # DEBUG: Print what we're working with
@@ -399,6 +400,8 @@ append_who_history <- function(existing = NULL, new_snapshot) {
   # Convert everything to character to avoid type mismatches
   existing <- existing %>%
     dplyr::mutate(dplyr::across(dplyr::all_of(cols), as.character))
+  
+  existing$Name <- trimws(existing$Name)
   
   new_snapshot <- new_snapshot %>%
     dplyr::mutate(dplyr::across(dplyr::all_of(cols), as.character))
