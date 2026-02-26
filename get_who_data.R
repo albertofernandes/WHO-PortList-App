@@ -457,8 +457,6 @@ update_history_github <- function(new_snapshot,
     combined
   }
   
-  do_update()
-  
   # Wrap the entire cycle in tryCatch to prevent any error from propagating
   # tryCatch(
   #   # Try once; on 409, re-read and try again
