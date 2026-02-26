@@ -50,6 +50,9 @@ get_who_port_list <- function(
   txt <- readLines(tmp, warn = FALSE)
   txt <- gsub(", ", ";", txt, fixed = FALSE)
   all_lines <- read.csv(textConnection(txt))
+  all_lines$Name <- trimws(all_lines$Name)
+  all_lines$Code <- trimws(all_lines$Code)
+  all_lines$Country <- trimws(all_lines$Country)
   all_lines[] <- lapply(all_lines, function(x) gsub(";", ", ", x, fixed = TRUE))
   all_lines <- fix_singletons_into_prev_last(all_lines)
   shift_cols <- function(df) {
