@@ -209,7 +209,7 @@ gh_read_csv <- function(repo = Sys.getenv("GH_REPO"),
   
   # Clean up temp file
   unlink(temp_file)
-  
+ 
   # Get the file SHA for updates (need a separate API call)
   # Note: This uses the regular API which works for metadata even on large files
   cat("Getting file SHA...\n")
@@ -251,7 +251,7 @@ gh_write_csv <- function(data,
   readr::write_csv(data, tf)
   file_size <- file.info(tf)$size
   cat("File size:", round(file_size / 1024 / 1024, 2), "MB\n")
-  
+
   # 2. Read as base64
   b64 <- base64enc::base64encode(tf)
   
