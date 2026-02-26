@@ -5,6 +5,8 @@ suppressPackageStartupMessages({
   library(base64enc)
 })
 
+if (file.exists("secrets.R")) source("secrets.R")   # sets env vars
+
 # Reuse your parsing + GitHub helpers
 # Resolve the directory of THIS script at runtime (works in GitHub Actions, Rscript, RStudio)
 args <- commandArgs(trailingOnly = FALSE)

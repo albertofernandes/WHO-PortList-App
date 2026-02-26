@@ -31,7 +31,7 @@ suppressPackageStartupMessages({
 })
 
 if (file.exists("secrets.R")) source("secrets.R")   # sets env vars
-source("get_who_data.R")                            # defines get_who_port_list(), etc.
+source("get_who_data.R")                            
 
 ui <- fluidPage(
   titlePanel("WHO Port List"),

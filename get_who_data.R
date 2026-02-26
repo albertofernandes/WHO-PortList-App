@@ -26,20 +26,25 @@ suppressPackageStartupMessages({
 })
 
 # ---- Public function ---------------------------------------------------------
-# Returns a tibble with the parsed data.
+
+#### Cron Job Functions ####
+# get_who_port_list
+# used in the job_fetch_who cron job only
+# Returns a tibble with the parsed data from csv_url. Adds today_ftm has timestamp in the tibble
 # Arguments:
-#   pdf_url  : character, the PDF URL (default = WHO endpoint)
+#   csv_url  : character, the CSV URL (default = WHO endpoint)
 #   today_fmt: character, date format for the Date column (default "%d/%m/%Y")
 #   quietly  : logical, suppress warnings/messages (default TRUE)
+# Uses fix_singletons_into_prev_last(df) to remove empty lines in the csv duo to parsing errors
 
 get_who_port_list <- function(
-    pdf_url  = "https://extranet.who.int/ihr/poedata/public/php/csvversion.php?lang=en&POEpage=0",
+    csv_url  = "https://extranet.who.int/ihr/poedata/public/php/csvversion.php?lang=en&POEpage=0",
     today_fmt = "%d/%m/%Y",
     quietly   = TRUE
 ) {
   #### Download to temp (binary) ####
   tmp <- tempfile(fileext = ".csv")
-  utils::download.file(pdf_url, tmp, mode = "wb", quiet = quietly)
+  utils::download.file(csv_url, tmp, mode = "wb", quiet = quietly)
   
   #### Manage csv content ####
   txt <- readLines(tmp, warn = FALSE)
@@ -74,9 +79,16 @@ get_who_port_list <- function(
   all_lines
 }
 
-# ---- GitHub CSV persistence via GitHub Contents API -------------------------
-# deps: install.packages(c("gh","readr","base64enc"))
-# Uses env vars: GITHUB_PAT, GH_REPO, GH_PATH, GH_BRANCH (default "main")
+# fix_singletons_into_prev_last
+# Row has exactly 1 used cell (singleton)
+# If there is a previous anchor row:
+# Extract the singleton value
+# Append it to the last column of the anchor row
+# Mark the singleton row to be deleted
+
+# Row has 2+ used cells
+# It becomes the new anchor.
+
 fix_singletons_into_prev_last <- function(df, sep = " ") {
   # treat blanks like missing
   is_used <- function(x) !is.na(x) & nzchar(trimws(as.character(x)))
@@ -116,6 +128,16 @@ fix_singletons_into_prev_last <- function(df, sep = " ") {
   df[keep, , drop = FALSE]
 }
 
+
+#### End of job_fetch_who Cron job only functions ####
+
+
+# ---- GitHub CSV persistence via GitHub Contents API -------------------------
+# deps: install.packages(c("gh","readr","base64enc"))
+# Uses env vars: GITHUB_PAT, GH_REPO, GH_PATH, GH_BRANCH (default "main")
+
+
+#retrieve secrets/variables in posit connect
 gh_require_env <- function() {
   if (!nzchar(Sys.getenv("GITHUB_PAT"))) stop("Missing GITHUB_PAT")
   if (!nzchar(Sys.getenv("GH_REPO"))) stop("Missing GH_REPO ('user/repo')")
@@ -434,6 +456,8 @@ update_history_github <- function(new_snapshot,
     attr(combined, "sha") <- new_sha
     combined
   }
+  
+  do_update()
   
   # Wrap the entire cycle in tryCatch to prevent any error from propagating
   # tryCatch(
