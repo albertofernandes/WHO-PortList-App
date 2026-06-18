@@ -1,150 +1,140 @@
-# WHO Port List — Automated Data Tracker  
+# WHO Port List — Automated Data Tracker
+
 [![Last Update](https://img.shields.io/github/last-commit/albertofernandes/WHO-PortList-App?label=Last%20Update&color=blue)](https://github.com/albertofernandes/WHO-PortList-App/commits/main)
 [![GitHub Actions](https://github.com/albertofernandes/WHO-PortList-App/actions/workflows/who_ports.yml/badge.svg)](https://github.com/albertofernandes/WHO-PortList-App/actions)
 
-### USP · Public Health Unit, Local Health Unit of Matosinhos  
-**Contact:** albertojose.fernandes@ulsm.min-saude.pt  
-**Version:** v1.1 · **Date:** 20/02/2026  
+**USP · Public Health Unit, Local Health Unit of Matosinhos**  
+**Maintainer:** Alberto José Fernandes · albertojose.fernandes@ulsm.min-saude.pt  
+**Version:** v1.1 · February 2026
 
 ---
 
-**Overview**
+## Overview
 
-This project parses the **World Health Organization (WHO) International Health Regulations (IHR) Ports List** PDF into a structured dataset and tracks its evolution over time.
-
-The **Shiny application** allows interactive exploration of the dataset, while a **GitHub Actions cron job** automatically fetches and updates the data three times per day — ensuring that your published data stays up to date without manual intervention.
+This project fetches and parses the **WHO International Health Regulations (IHR) Ports List** from the WHO public CSV endpoint and tracks its evolution over time. A **GitHub Actions cron job** runs three times daily and commits updated data directly to the repository. A **Shiny dashboard** provides interactive exploration of the historical dataset.
 
 ---
 
-**Key Features**
+## Key Features
 
-- 🔎 **Live parsing** of WHO’s official *IHR Ports List* PDF  
-- 🗃️ **Clean tabular output** — columns:  
-  `Country`, `Name`, `Code`, `SSCC`, `SSCEC`, `Extension`, `Other information`, `Date`
-- 🕐 **Automated updates** 3× per day via GitHub Actions  
-- 📈 **Interactive dashboard** in Shiny  
-- 💾 **Versioned history** — each run stores a timestamped snapshot and maintains a rolling `who_history.csv`
+- Automated download and parsing of the [WHO IHR Ports CSV](https://extranet.who.int/ihr/poedata/public/php/csvversion.php?lang=en&POEpage=0)
+- Clean tabular output with columns: `Country`, `Name`, `Code`, `SSCC`, `SSCEC`, `Extension`, `Other information`, `Date`
+- Automated updates 3× per day via GitHub Actions (08:30, 15:00, 22:00 Europe/Lisbon)
+- Each run writes a timestamped snapshot (`snapshots/who_ports_YYYYmmdd-HHMM.csv`) and appends to the rolling `who_history.csv`
+- Shiny dashboard to filter ports by country, search by name or code, and visualise certification status over time
 
 ---
 
-**Repository Structure**
+## Repository Structure
 
+```
 WHO-PortList-App/
-├── app.R # Shiny application (interactive dashboard)
-├── get_who_data.R # Core functions: fetch, parse, and GitHub I/O
+├── app.R                  # Shiny application
+├── get_who_data.R         # Core functions: fetch, parse, and GitHub I/O
+├── who_history.csv        # Rolling history file (updated automatically)
 ├── cron/
-│ └── job_fetch_who.R # Script executed by GitHub Actions on schedule
+│   └── job_fetch_who.R    # Script executed by GitHub Actions on schedule
+├── snapshots/             # Timestamped CSV snapshots (one per run)
 └── .github/
-└── workflows/
-└── who_ports.yml # Cron job workflow configuration
+    └── workflows/
+        └── who_ports.yml  # Cron workflow configuration
+```
 
 ---
 
-**Shiny Application**
+## Shiny Application
 
-The **Shiny app** provides an interface for viewing and filtering port data.
+The dashboard (`app.R`) loads `who_history.csv` directly from GitHub and provides:
 
-**How it works:**
-1. Filter the table to find a specific port.
-2. Select one row (one port).
-3. The chart displays **three colored lines** over time representing:
-   - **SSCC**
-   - **SSCEC**
-   - **Extension**
+- **Country selector** — filter ports by country (defaults to Portugal)
+- **Port selector** — searchable dropdown by name or UNLOCODE; defaults to Leixões (PTLEI)
+- **Date range filter** — optionally restrict the table and charts to a date window
+- **Data information panel** — shows last update date, total ports, countries covered, and date range of the dataset
+- **Three time-series plots** (last 6 months) — one per IHR criterion:
+  - **SSCC** (blue) — Ship Sanitation Control Certificate
+  - **SSCEC** (red) — Ship Sanitation Control Exemption Certificate
+  - **Extension** (green) — Extension of SSCC/SSCEC
+- **Filtered data table** — shows all rows for the selected port
 
-Each line indicates if the port met the criterion on that date:
-- `[x]` → Yes (1)  
-- `[ ]` → No (0)
-
-The app automatically reads from the GitHub-hosted CSV (`who_history.csv`) to display up-to-date results.
+Each plot shows `Yes [x]` (1) or `No [ ]` (0) for each observation date.
 
 ---
 
-**Automated Data Updates (GitHub Actions)**
+## Automated Data Updates (GitHub Actions)
 
-This repository includes a **scheduled GitHub Actions workflow** that keeps the data synchronized with WHO’s public PDF source.
+The scheduled workflow runs `cron/job_fetch_who.R` on the following UTC cron schedule (equivalent to 08:30, 15:00, 22:00 Europe/Lisbon):
 
-**Schedule**
-
-Runs daily at **08:30**, **15:00**, and **22:00** (Europe/Lisbon time):
-
+```yaml
 schedule:
   - cron: '30 8,15,22 * * *'
-  - 
-**Workflow Summary**
-Each scheduled run performs:
-Checkout the repository
-Install R and required system libraries (libpoppler, etc.)
-Run the update script cron/job_fetch_who.R
-Downloads and parses the latest WHO IHR Ports PDF
-Writes a timestamped CSV snapshot: snapshots/who_ports_YYYYmmdd-HHMM.csv
-Updates and deduplicates the rolling file: who_history.csv
-Commit and push changes back to the repository automatically
+```
 
-**Authentication & Environment Variables**
-The workflow uses GitHub’s built-in GITHUB_TOKEN, automatically mapped to GITHUB_PAT for GitHub API access.
+**Each run:**
+1. Downloads and parses the latest WHO IHR Ports CSV
+2. Writes a timestamped snapshot: `snapshots/who_ports_YYYYmmdd-HHMM.csv`
+3. Appends new rows and deduplicates the rolling `who_history.csv`
+4. Commits and pushes changes back to the repository
 
-Variable	Description	Default / Example
-  GH_REPO	Target repository (owner/repo)
-  GH_BRANCH	Branch to update
-  GH_PATH	Rolling history file
-  GH_SNAPSHOT_DIR	Directory for timestamped snapshots	snapshots
-  GITHUB_PAT	Authentication token for gh API
+**Environment variables used by the workflow:**
 
-**Setting Up Your Own Automated Job**
-You can fork this repository and instantly have the same automation running.
+| Variable | Description | Default |
+|---|---|---|
+| `GH_REPO` | Target repository (`owner/repo`) | — |
+| `GH_BRANCH` | Branch to update | `main` |
+| `GH_PATH` | Path to rolling history file | — |
+| `GH_SNAPSHOT_DIR` | Directory for timestamped snapshots | `snapshots` |
+| `GITHUB_PAT` | GitHub API token (mapped from `GITHUB_TOKEN`) | — |
 
-1️⃣ Fork the repository
-Click Fork in GitHub to create your own copy.
+---
 
-2️⃣ Enable GitHub Actions
-Go to the Actions tab in your fork → click Enable workflows.
+## Setting Up Your Own Fork
 
-3️⃣ (Optional) Adjust schedule
-Edit .github/workflows/who_ports.yml and modify the cron: line if you want a different update frequency.
+1. **Fork** the repository on GitHub.
+2. Go to the **Actions** tab and click **Enable workflows**.
+3. *(Optional)* Edit `.github/workflows/who_ports.yml` to adjust the cron schedule.
+4. Push — the workflow will run automatically on schedule.
 
-4️⃣ Commit and push
-Once pushed, GitHub Actions will automatically start running the workflow on schedule.
-
-5️⃣ View results
-Go to the Actions tab → select WHO Ports snapshots → view logs and output.
-
-Example run output:
+**Example run output:**
+```
 OK: wrote snapshots/who_ports_20251028-0830.csv and updated who_history.csv on branch main
+```
 
-**Manual Execution**
+---
 
-To test or run the update manually:
+## Manual Execution
 
-  From R:
-    
-    source("cron/job_fetch_who.R")
-  
-  From terminal:
-    
-    Rscript cron/job_fetch_who.R
+Run the data update script locally:
 
-**Notes**
+```r
+# From R
+source("cron/job_fetch_who.R")
+```
 
-The cron workflow automatically creates missing CSVs on the first run.
+```bash
+# From terminal
+Rscript cron/job_fetch_who.R
+```
 
-Each timestamped file preserves historical snapshots for reproducibility.
+**Required R packages:** `shiny`, `DT`, `gh`, `ggplot2`, `readr`, `base64enc`, `pdftools`, `dplyr`, `stringr`, `purrr`, `tidyr`, `httr2`
 
-The Shiny app always reads directly from the GitHub data, ensuring consistency with the latest snapshot.
+---
 
-**Credits**
+## Notes
 
-Author: USP - Public Health Unit, Local Health Unit of Matosinhos
+- The Shiny app reads data directly from the GitHub-hosted CSV, so it always reflects the latest committed snapshot.
+- Timestamped snapshots in `snapshots/` are retained for reproducibility and historical analysis.
+- The cron job creates `who_history.csv` automatically on first run if it does not exist.
 
-Maintainer: Alberto José Fernandes
+---
 
-Contact: albertojose.fernandes@ulsm.min-saude.pt
+## Credits
 
+**Author:** USP — Public Health Unit, ULS Matosinhos  
+**Maintainer:** Alberto José Fernandes  
+**Contact:** albertojose.fernandes@ulsm.min-saude.pt
 
-**License**
+---
 
-This project is open-source under the MIT License.
+## License
 
-Pull requests - welcome
-
-This project is open-source under the MIT License.
+This project is open-source under the [MIT License](LICENSE). Pull requests are welcome.
